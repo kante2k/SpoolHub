@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""Small Klipper macro helper for SpoolHub."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+import urllib.error
+import urllib.request
+
+
+def post_json(url: str, payload: dict) -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        body = response.read().decode("utf-8")
+        return json.loads(body) if body else {}
+
+
+def get_json(url: str) -> dict:
+    request = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    with urllib.request.urlopen(request, timeout=12) as response:
+        body = response.read().decode("utf-8")
+        return json.loads(body) if body else {}
+
+
+def parse_bool(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
+
+def bool_arg(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def load_env_config(path: str) -> dict[str, str]:
+    if not path:
+        return {}
+    config_path = Path(path)
+    if not config_path.exists():
+        return {}
+    values = {}
+    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def config_bool(config: dict[str, str], key: str, fallback: bool) -> bool:
+    if key not in config:
+        return fallback
+    return parse_bool(config[key])
+
+
+def apply_profile(args: argparse.Namespace) -> int:
+    config = load_env_config(args.config)
+    server = config.get("SPOOLHUB_URL", args.server).rstrip("/")
+    pressure_advance = args.pressure_advance
+    retract = args.retract
+    temperatures = args.temperatures
+    part_cooling_fan = args.part_cooling_fan
+    if args.config:
+        pressure_advance = config_bool(config, "APPLY_PRESSURE_ADVANCE", pressure_advance)
+        retract = config_bool(config, "APPLY_RETRACT", retract)
+        temperatures = config_bool(config, "APPLY_TEMPERATURES", temperatures)
+        part_cooling_fan = config_bool(config, "APPLY_PART_COOLING_FAN", part_cooling_fan)
+    url = f"{server}/api/moonraker/{args.printer}/{args.toolhead}/apply-profile"
+    result = post_json(
+        url,
+        {
+            "pressureAdvance": pressure_advance,
+            "retract": retract,
+            "temperatures": temperatures,
+            "partCoolingFan": part_cooling_fan,
+        },
+    )
+    script = result.get("script", "")
+    if script:
+        print(script)
+    return 0
+
+
+def generated_toolheads(args: argparse.Namespace) -> list[dict]:
+    server = args.server.rstrip("/")
+    try:
+        config = get_json(f"{server}/api/config")
+        for printer in config.get("printers", []):
+            if printer.get("id") == args.printer:
+                toolheads = printer.get("toolheads") or printer.get("extruders") or []
+                if toolheads:
+                    return [
+                        {
+                            "id": item["id"],
+                            "label": item.get("name") or f"T{index}",
+                            "index": index,
+                            "klipperObject": item.get("klipperObject") or item.get("klipper_object") or ("extruder" if index == 0 else f"extruder{index}"),
+                        }
+                        for index, item in enumerate(toolheads)
+                    ]
+    except Exception:
+        if not args.allow_fallback:
+            raise
+
+    if args.toolhead_count is None:
+        raise ValueError("Toolheads konnten nicht aus SpoolHub gelesen werden und --toolhead-count fehlt.")
+    print(
+        f"Warnung: Toolheads wurden nicht aus SpoolHub gelesen. Erzeuge ersatzweise {args.toolhead_count} _SPOOLHUB_APPLY_T* Makro(s).",
+        file=sys.stderr,
+    )
+    return [
+        {
+            "id": f"{args.printer}-t{index}",
+            "label": f"T{index}",
+            "index": index,
+            "klipperObject": "extruder" if index == 0 else f"extruder{index}",
+        }
+        for index in range(args.toolhead_count)
+    ]
+
+
+def generate_klipper_config(args: argparse.Namespace) -> int:
+    server = args.server.rstrip("/")
+    toolheads = generated_toolheads(args)
+    include_path = args.include_path or args.output
+    lines = [
+        "# Generated by SpoolHub.",
+        f"# Printer id: {args.printer}",
+        f"# Server: {server}",
+        "#",
+        "# Voraussetzung: Klipper [save_variables] muss aktiviert sein.",
+        "# SpoolHub schreibt die Spulendaten mit SAVE_VARIABLE in diese lokale Datei.",
+        "# Die Makros lesen waehrend des Drucks nur lokale save_variables.",
+        "#",
+        "# In printer.cfg einbinden:",
+        f"#   [include {include_path}]",
+        "#",
+        "# Nur in bestehende Toolhead-/Toolchange-Makros einhaengen:",
+        "#   _SPOOLHUB_APPLY_T0",
+        "",
+    ]
+    if args.include_save_variables:
+        lines.extend(
+            [
+                "[save_variables]",
+                f"filename: {args.save_variables_filename}",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "[gcode_macro _SPOOLHUB_OPTIONS]",
+            "description: Local SpoolHub apply options.",
+            f"variable_apply_spool_usage: {1 if args.spoolman_tracking else 0}",
+            f"variable_apply_pressure_advance: {1 if args.pressure_advance else 0}",
+            f"variable_apply_retract: {1 if args.retract else 0}",
+            f"variable_apply_temperatures: {1 if args.temperatures else 0}",
+            f"variable_apply_part_cooling_fan: {1 if args.part_cooling_fan else 0}",
+            "gcode:",
+            "  RESPOND MSG=\"SpoolHub options are local.\"",
+            "",
+        ]
+    )
+    def value_ref(index: int, key: str) -> str:
+        return f"vars.spoolhub_t{index}_{key}|default(-1)"
+
+    def option_ref(key: str) -> str:
+        return f"printer['gcode_macro _SPOOLHUB_OPTIONS'].apply_{key}|int"
+
+    for toolhead in toolheads:
+        index = toolhead["index"]
+        macro_name = f"_SPOOLHUB_APPLY_T{index}"
+        extruder = toolhead.get("klipperObject") or toolhead.get("klipper_object") or "extruder"
+        lines.extend(
+            [
+                f"[gcode_macro {macro_name}]",
+                f"description: Apply local SpoolHub profile for {toolhead['label']}",
+                "gcode:",
+                "  {% set vars = printer.save_variables.variables %}",
+                f"  {{% set spool_id = {value_ref(index, 'spool_id')}|int %}}",
+                f"  {{% if {option_ref('spool_usage')} and spool_id >= 0 %}}",
+                '    {action_call_remote_method("spoolman_set_active_spool", spool_id=spool_id)}',
+                f"  {{% elif {option_ref('spool_usage')} %}}",
+                '    {action_call_remote_method("spoolman_set_active_spool", spool_id=None)}',
+                "  {% endif %}",
+                f"  {{% if {option_ref('pressure_advance')} and {value_ref(index, 'pressure_advance')}|float >= 0 %}}",
+                f"    SET_PRESSURE_ADVANCE EXTRUDER={extruder} ADVANCE={{{value_ref(index, 'pressure_advance')}}}",
+                "  {% endif %}",
+                f"  {{% if {option_ref('retract')} and ({value_ref(index, 'retract_length')}|float >= 0 or {value_ref(index, 'retract_speed')}|float >= 0) %}}",
+                "    {% set cmd = 'SET_RETRACTION' %}",
+                f"    {{% if {value_ref(index, 'retract_length')}|float >= 0 %}}",
+                f"      {{% set cmd = cmd ~ ' RETRACT_LENGTH=' ~ {value_ref(index, 'retract_length')} %}}",
+                "    {% endif %}",
+                f"    {{% if {value_ref(index, 'retract_speed')}|float >= 0 %}}",
+                f"      {{% set cmd = cmd ~ ' RETRACT_SPEED=' ~ {value_ref(index, 'retract_speed')} %}}",
+                "    {% endif %}",
+                "    {cmd}",
+                "  {% endif %}",
+                f"  {{% if {option_ref('temperatures')} and {value_ref(index, 'nozzle_temperature')}|float >= 0 %}}",
+                f"    SET_HEATER_TEMPERATURE HEATER={extruder} TARGET={{{value_ref(index, 'nozzle_temperature')}}}",
+                "  {% endif %}",
+                f"  {{% if {option_ref('temperatures')} and {value_ref(index, 'bed_temperature')}|float >= 0 %}}",
+                f"    SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET={{{value_ref(index, 'bed_temperature')}}}",
+                "  {% endif %}",
+                f"  {{% if {option_ref('temperatures')} and {value_ref(index, 'chamber_temperature')}|float >= 0 %}}",
+                f"    SET_HEATER_TEMPERATURE HEATER=chamber TARGET={{{value_ref(index, 'chamber_temperature')}}}",
+                "  {% endif %}",
+                f"  {{% if {option_ref('part_cooling_fan')} and {value_ref(index, 'part_cooling_fan_speed')}|float >= 0 %}}",
+                f"    M106 S{{({value_ref(index, 'part_cooling_fan_speed')}|float * 2.55)|round|int}}",
+                "  {% endif %}",
+                "",
+            ]
+        )
+
+    content = "\n".join(lines)
+    if args.output == "-":
+        print(content)
+    else:
+        with open(args.output, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.write("\n")
+    return 0
+
+
+def generate_save_variables_template(args: argparse.Namespace) -> int:
+    toolheads = generated_toolheads(args)
+    keys = [
+        "spool_id",
+        "pressure_advance",
+        "retract_length",
+        "retract_speed",
+        "nozzle_temperature",
+        "bed_temperature",
+        "chamber_temperature",
+        "part_cooling_fan_speed",
+    ]
+    lines = [
+        "# Generated by SpoolHub.",
+        "# Dummy values are overwritten by SAVE_VARIABLE when a spool is assigned.",
+        "[Variables]",
+    ]
+    for toolhead in toolheads:
+        index = toolhead["index"]
+        for key in keys:
+            lines.append(f"spoolhub_t{index}_{key} = -1")
+
+    content = "\n".join(lines)
+    if args.output == "-":
+        print(content)
+    else:
+        with open(args.output, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.write("\n")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Call SpoolHub from Klipper macros.")
+    parser.add_argument("--server", default="http://127.0.0.1:8087", help="SpoolHub server URL")
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    apply_parser = subparsers.add_parser("apply-profile", help="Apply one Toolhead profile through SpoolHub")
+    apply_parser.add_argument("--printer", required=True, help="SpoolHub printer id, e.g. printer-1")
+    apply_parser.add_argument("--toolhead", required=True, help="SpoolHub toolhead id, e.g. printer-1-t0")
+    apply_parser.add_argument("--config", default="", help="Client env config file")
+    apply_parser.add_argument("--pressure-advance", type=parse_bool, default=True, help="Apply pressure advance")
+    apply_parser.add_argument("--retract", type=parse_bool, default=True, help="Apply retract settings")
+    apply_parser.add_argument("--temperatures", type=parse_bool, default=True, help="Apply temperature settings")
+    apply_parser.add_argument("--part-cooling-fan", type=parse_bool, default=True, help="Apply part cooling fan speed")
+    apply_parser.set_defaults(func=apply_profile)
+
+    generate_parser = subparsers.add_parser("generate-klipper-config", help="Generate a neutral Klipper include file")
+    generate_parser.add_argument("--printer", required=True, help="SpoolHub printer id")
+    generate_parser.add_argument("--output", required=True, help="Output cfg path, or - for stdout")
+    generate_parser.add_argument("--include-path", default="", help="Path shown in generated include comments")
+    generate_parser.add_argument("--client-dir", default="/opt/spoolhub-client", help="Installed client helper directory")
+    generate_parser.add_argument("--toolhead-count", type=int, default=None, help="Number of _SPOOLHUB_APPLY_T* macros to generate if SpoolHub toolheads cannot be read")
+    generate_parser.add_argument("--allow-fallback", action="store_true", help="Generate generic printer-tN toolheads if SpoolHub toolheads cannot be read")
+    generate_parser.add_argument("--include-save-variables", action="store_true", help="Include a [save_variables] section")
+    generate_parser.add_argument("--save-variables-filename", default="~/printer_data/config/saved_vars.cfg", help="Klipper save_variables filename")
+    generate_parser.add_argument("--spoolman-tracking", type=parse_bool, default=True, help="Set the active Moonraker Spoolman spool in toolhead macros")
+    generate_parser.add_argument("--pressure-advance", type=parse_bool, default=True, help="Generate macros that apply pressure advance")
+    generate_parser.add_argument("--retract", type=parse_bool, default=True, help="Generate macros that apply retract settings")
+    generate_parser.add_argument("--temperatures", type=parse_bool, default=True, help="Generate macros that apply temperature settings")
+    generate_parser.add_argument("--part-cooling-fan", type=parse_bool, default=True, help="Generate macros that apply part cooling fan speed")
+    generate_parser.set_defaults(func=generate_klipper_config)
+
+    variables_parser = subparsers.add_parser("generate-save-variables-template", help="Generate initial Klipper save_variables values")
+    variables_parser.add_argument("--printer", required=True, help="SpoolHub printer id")
+    variables_parser.add_argument("--output", required=True, help="Output cfg path, or - for stdout")
+    variables_parser.add_argument("--toolhead-count", type=int, default=None, help="Number of spoolhub_tN variables to generate if SpoolHub toolheads cannot be read")
+    variables_parser.add_argument("--allow-fallback", action="store_true", help="Generate generic printer-tN variables if SpoolHub toolheads cannot be read")
+    variables_parser.set_defaults(func=generate_save_variables_template)
+
+    args = parser.parse_args()
+    try:
+        return args.func(args)
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        print(f"SpoolHub HTTP error {exc.code}: {details}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"SpoolHub error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

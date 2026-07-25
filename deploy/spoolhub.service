@@ -1,0 +1,17 @@
+[Unit]
+Description=SpoolHub multi-material management service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=-/etc/default/spoolhub
+ExecStart=/usr/bin/python3 __APP_DIR__/spoolhub.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,523 @@
+:root {
+  color-scheme: dark;
+  --bg: #101114;
+  --panel: #1b1d21;
+  --panel-2: #24272d;
+  --line: #353942;
+  --text: #f4f1e8;
+  --muted: #aeb6bd;
+  --accent: #49b6a8;
+  --accent-strong: #ffd166;
+  --danger: #ef6f6c;
+  --ok: #72d572;
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  min-height: 36px;
+  border-radius: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.assignment-owner {
+  color: var(--accent-strong);
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111317;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.shell {
+  width: min(1480px, 100%);
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 0 18px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  letter-spacing: 0;
+}
+
+.topbar p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.05fr) minmax(360px, 0.95fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.history-panel {
+  grid-column: 1 / -1;
+}
+
+.history-panel.collapsed .history-list {
+  display: none;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.panel-heading {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-heading h2,
+.dialog-heading h2,
+.settings-toolbar h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.spool-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.spool-heading-actions input {
+  width: min(320px, 42vw);
+}
+
+.status-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status-chip.ok {
+  border-color: rgba(114, 213, 114, 0.45);
+  color: var(--ok);
+}
+
+.status-chip.error {
+  border-color: rgba(239, 111, 108, 0.55);
+  color: var(--danger);
+}
+
+.printer-list,
+.spool-list,
+.history-list {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.printer-card,
+.spool-card,
+.editor-card {
+  background: #15171b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.printer-card {
+  overflow: hidden;
+}
+
+.printer-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #202329;
+  border-bottom: 1px solid var(--line);
+}
+
+.printer-title h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.printer-title small {
+  color: var(--muted);
+}
+
+.extruder-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 110px) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.extruder-row:last-child {
+  border-bottom: 0;
+}
+
+.extruder-name {
+  font-weight: 700;
+}
+
+.assigned-spool {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+}
+
+.assigned-spool strong,
+.spool-card strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assigned-spool span,
+.spool-meta,
+.empty-state {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.assigned-spool > span:last-child {
+  grid-column: 2;
+}
+
+.assignment-select-label {
+  min-width: 0;
+  color: var(--muted);
+}
+
+.assignment-select-label > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.78rem;
+}
+
+.assignment-select {
+  min-height: 36px;
+}
+
+.spool-card {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: #15171b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.history-item time,
+.history-item span {
+  color: var(--muted);
+}
+
+.history-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spool-visual {
+  position: relative;
+  display: inline-block;
+  width: 76px;
+  height: 62px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.28));
+}
+
+.spool-visual.compact {
+  width: 50px;
+  height: 42px;
+  grid-row: 1 / span 2;
+}
+
+.spool-flange,
+.spool-filament,
+.spool-hub {
+  position: absolute;
+}
+
+.spool-flange {
+  inset: 2px 3px;
+  background:
+    linear-gradient(#292d33, #101216) top / 100% 6px no-repeat,
+    linear-gradient(#101216, #292d33) bottom / 100% 6px no-repeat,
+    linear-gradient(90deg, transparent 4%, #1b1e23 4% 9%, transparent 9% 91%, #1b1e23 91% 96%, transparent 96%);
+  border-radius: 2px;
+}
+
+.spool-filament {
+  inset: 9px 9px;
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.16) 0 1px, rgba(0,0,0,.10) 1px 3px),
+    linear-gradient(90deg, var(--spool-color) 0 var(--spool-level), color-mix(in srgb, var(--spool-color) 24%, #17191d) var(--spool-level) 100%);
+  box-shadow: inset 3px 0 rgba(255,255,255,.12), inset -3px 0 rgba(0,0,0,.22);
+}
+
+.spool-hub {
+  left: 50%;
+  top: 50%;
+  min-width: 25px;
+  padding: 2px 3px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #b9b9b3;
+  border-radius: 1px;
+  background: #f3f0e7;
+  color: #22252a !important;
+  font-size: 0.52rem !important;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+
+.spool-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.spool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.profile-title {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+dialog {
+  width: min(1080px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0;
+  box-shadow: var(--shadow);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.settings-form {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.dialog-heading,
+.settings-toolbar,
+.dialog-actions,
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+label span {
+  font-size: 0.9rem;
+}
+
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-line input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.printer-editor {
+  display: grid;
+  gap: 12px;
+  max-height: 48vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.editor-card {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.editor-grid,
+.extruder-line {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 10px;
+}
+
+.extruder-line {
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
+  align-items: end;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.dialog-actions {
+  margin: 0;
+  padding: 0;
+}
+
+.dialog-actions button:last-child {
+  background: var(--accent);
+  color: #07100f;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .extruder-row {
+    grid-template-columns: 1fr;
+  }
+
+  .history-item {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-grid,
+  .extruder-line,
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .spool-heading-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .spool-heading-actions input {
+    width: 100%;
+  }
+}

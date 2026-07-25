@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpoolHub</title>
+    <link rel="stylesheet" href="styles.css?v=7" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>SpoolHub</h1>
+          <p data-i18n="app.subtitle">Zentrale Spulenverwaltung für Klipper-Multimaterial-Drucker und Toolchanger</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="refreshButton" title="Spulen neu laden" aria-label="Spulen neu laden" data-i18n-title="actions.refresh">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.3 6.4" />
+              <path d="M3 12A9 9 0 0 1 18.3 5.6" />
+              <path d="M18 2v4h-4" />
+              <path d="M6 22v-4h4" />
+            </svg>
+          </button>
+          <button class="icon-button" id="settingsButton" title="Einstellungen" aria-label="Einstellungen" data-i18n-title="actions.settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 .9-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel printers-panel">
+          <div class="panel-heading">
+            <h2 data-i18n="sections.printers">Drucker und Toolheads</h2>
+          </div>
+          <div id="printerList" class="printer-list"></div>
+        </section>
+
+        <section class="panel spools-panel">
+          <div class="panel-heading">
+            <h2 data-i18n="sections.spools">Spulen</h2>
+            <div class="spool-heading-actions">
+              <span id="connectionState" class="status-chip" data-i18n="status.loading">Lade...</span>
+              <input id="spoolSearch" type="search" placeholder="Material, Hersteller, Farbe..." data-i18n-placeholder="search.spools" />
+            </div>
+          </div>
+          <div id="spoolList" class="spool-list"></div>
+        </section>
+
+        <section id="historyPanel" class="panel history-panel collapsed">
+          <div class="panel-heading">
+            <h2 data-i18n="sections.history">Historie</h2>
+            <button id="historyToggleButton" type="button" aria-expanded="false" data-i18n="actions.showHistory">Historie anzeigen</button>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" class="settings-form">
+        <div class="dialog-heading">
+          <h2 data-i18n="settings.title">Einstellungen</h2>
+          <button class="icon-button" value="cancel" title="Schließen" aria-label="Schließen" data-i18n-title="actions.close">x</button>
+        </div>
+
+        <label>
+          <span data-i18n="settings.language">Sprache</span>
+          <select id="languageInput"></select>
+        </label>
+
+        <label>
+          <span data-i18n="settings.spoolmanUrl">Spoolman-URL</span>
+          <input id="spoolmanUrlInput" type="url" required />
+        </label>
+
+        <label class="checkbox-line">
+          <input id="syncLocationInput" type="checkbox" />
+          <span data-i18n="settings.syncLocation">Spoolman-Standort beim Zuweisen aktualisieren</span>
+        </label>
+
+        <div class="settings-toolbar">
+          <h3 data-i18n="sections.printers">Drucker und Toolheads</h3>
+          <button type="button" id="addPrinterButton" data-i18n="actions.addPrinter">Drucker hinzufügen</button>
+        </div>
+
+        <div id="printerEditor" class="printer-editor"></div>
+
+        <menu class="dialog-actions">
+          <button value="cancel" data-i18n="actions.cancel">Abbrechen</button>
+          <button id="saveSettingsButton" value="default" data-i18n="actions.save">Speichern</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="spoolProfileDialog">
+      <form method="dialog" class="settings-form">
+        <div class="dialog-heading">
+          <h2 data-i18n="profile.title">Spulenprofil</h2>
+          <button class="icon-button" value="cancel" title="Schließen" aria-label="Schließen" data-i18n-title="actions.close">x</button>
+        </div>
+
+        <input id="profileSpoolIdInput" type="hidden" />
+        <div id="profileSpoolName" class="profile-title"></div>
+
+        <div class="profile-grid">
+          <label><span data-i18n="profile.pressureAdvance">Pressure advance</span><input id="profilePressureAdvance" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="0.045"></label>
+          <label><span data-i18n="profile.retractLength">Retract length mm</span><input id="profileRetractLength" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="1.2"></label>
+          <label><span data-i18n="profile.retractSpeed">Retract speed mm/s</span><input id="profileRetractSpeed" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="35"></label>
+          <label><span data-i18n="profile.nozzleTemperature">Düsentemperatur °C</span><input id="profileNozzleTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="215"></label>
+          <label><span data-i18n="profile.bedTemperature">Betttemperatur °C</span><input id="profileBedTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="60"></label>
+          <label><span data-i18n="profile.chamberTemperature">Kammertemperatur °C</span><input id="profileChamberTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="45"></label>
+          <label><span data-i18n="profile.partCoolingFanSpeed">Bauteillüftergeschwindigkeit %</span><input id="profilePartCoolingFanSpeed" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" min="0" max="100" placeholder="100"></label>
+        </div>
+
+        <menu class="dialog-actions">
+          <button value="cancel" data-i18n="actions.cancel">Abbrechen</button>
+          <button id="saveSpoolProfileButton" value="default" data-i18n="actions.save">Speichern</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <template id="printerEditorTemplate">
+      <article class="editor-card">
+        <div class="editor-grid">
+          <label>
+            <span data-i18n="editor.printerId">Drucker-ID</span>
+            <input data-field="id" required />
+          </label>
+          <label>
+            <span data-i18n="editor.name">Name</span>
+            <input data-field="name" required />
+          </label>
+          <label>
+            <span data-i18n="editor.moonrakerUrl">Moonraker URL</span>
+            <input data-field="moonrakerUrl" type="url" required />
+          </label>
+        </div>
+        <div class="extruder-editor"></div>
+        <div class="editor-actions">
+          <button type="button" data-action="add-extruder" data-i18n="actions.addToolhead">Toolhead hinzufügen</button>
+          <button type="button" data-action="remove-printer" data-i18n="actions.remove">Entfernen</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js?v=12" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpoolHub Mainsail Panel</title>
+    <link rel="stylesheet" href="mainsail.css?v=6" />
+  </head>
+  <body>
+    <main class="panel-shell">
+      <header class="panel-topbar">
+        <div>
+          <h1>SpoolHub</h1>
+          <p data-i18n="mainsail.subtitle">Multimaterial-Spulen und Profile</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="statusChip" class="status-chip" data-i18n="status.loading">Lade...</span>
+          <button id="refreshButton" type="button" title="Aktualisieren" aria-label="Aktualisieren" data-i18n-title="actions.refresh">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.3 6.4" />
+              <path d="M3 12A9 9 0 0 1 18.3 5.6" />
+              <path d="M18 2v4h-4" />
+              <path d="M6 22v-4h4" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="printerGrid" class="printer-grid"></section>
+    </main>
+
+    <template id="printerTemplate">
+      <article class="printer-card">
+        <header class="printer-header">
+          <div>
+            <h2 data-field="printer-name"></h2>
+            <span data-field="printer-url"></span>
+          </div>
+          <span data-field="toolhead-count" class="status-chip"></span>
+        </header>
+        <div data-field="toolheads" class="toolhead-list"></div>
+      </article>
+    </template>
+
+    <script src="mainsail-panel.js?v=9" type="module"></script>
+  </body>
+</html>

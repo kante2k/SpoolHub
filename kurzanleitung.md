@@ -19,7 +19,7 @@ http://<SERVER-IP>:8087
 Unter **Einstellungen**:
 
 1. Spoolman-Adresse prüfen.
-2. Drucker-ID und Moonraker-URL eintragen.
+2. Drucker-ID, Moonraker-URL und Mainsail-URL eintragen.
 3. Toolheads mit passender Klipper-Objektbezeichnung anlegen.
 4. Einstellungen speichern.
 
@@ -46,6 +46,8 @@ Die Oberfläche zeigt:
 - aktuellen Besitzer einer bereits zugewiesenen Spule
 
 Während `printing` oder `paused` sind Änderungen gesperrt.
+
+Wenn nur Mainsail erreichbar ist, speichert SpoolHub eine neue Zuordnung ohne einen Befehl an Klipper zu senden. Sobald Klipper bereit ist, wird sie automatisch übertragen. Bei einem vollständig offline befindlichen Drucker können Spulen entfernt, aber nicht hinzugefügt werden; beim Hinzufügen erscheint `Printer not available`.
 
 ## 5. Client installieren
 

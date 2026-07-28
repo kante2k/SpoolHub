@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -54,6 +55,7 @@ def init_db() -> None:
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
               moonraker_url TEXT NOT NULL,
+              mainsail_url TEXT NOT NULL DEFAULT '',
               enabled INTEGER NOT NULL DEFAULT 1,
               sort_order INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
@@ -88,6 +90,8 @@ def init_db() -> None:
               spool_id INTEGER,
               assigned_at TEXT NOT NULL,
               note TEXT NOT NULL DEFAULT '',
+              sync_pending INTEGER NOT NULL DEFAULT 0,
+              last_sync_error TEXT NOT NULL DEFAULT '',
               PRIMARY KEY (printer_id, toolhead_id)
             );
 
@@ -132,6 +136,14 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     profile_columns = {row["name"] for row in conn.execute("PRAGMA table_info(spool_profiles)").fetchall()}
     if "part_cooling_fan_speed" not in profile_columns:
         conn.execute("ALTER TABLE spool_profiles ADD COLUMN part_cooling_fan_speed INTEGER")
+    printer_columns = {row["name"] for row in conn.execute("PRAGMA table_info(printers)").fetchall()}
+    if "mainsail_url" not in printer_columns:
+        conn.execute("ALTER TABLE printers ADD COLUMN mainsail_url TEXT NOT NULL DEFAULT ''")
+    assignment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(assignments)").fetchall()}
+    if "sync_pending" not in assignment_columns:
+        conn.execute("ALTER TABLE assignments ADD COLUMN sync_pending INTEGER NOT NULL DEFAULT 0")
+    if "last_sync_error" not in assignment_columns:
+        conn.execute("ALTER TABLE assignments ADD COLUMN last_sync_error TEXT NOT NULL DEFAULT ''")
     conn.executescript(
         """
         CREATE TRIGGER IF NOT EXISTS assignments_spool_exclusive_insert
@@ -231,6 +243,7 @@ def seed_printers(conn: sqlite3.Connection) -> None:
             "id": "printer-1",
             "name": "Printer 1",
             "moonrakerUrl": "http://printer-1.local:7125",
+            "mainsailUrl": "http://printer-1.local",
             "toolheads": [
                 {"id": "printer-1-t0", "name": "T0", "klipperObject": "extruder"},
             ],
@@ -253,15 +266,24 @@ def add_printer(conn: sqlite3.Connection, printer: dict, sort_order: int = 0) ->
     printer_id = printer.get("id") or slug(printer.get("name", "printer"))
     conn.execute(
         """
-        INSERT INTO printers (id, name, moonraker_url, enabled, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, 1, ?, ?, ?)
+        INSERT INTO printers (id, name, moonraker_url, mainsail_url, enabled, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           moonraker_url = excluded.moonraker_url,
+          mainsail_url = excluded.mainsail_url,
           sort_order = excluded.sort_order,
           updated_at = excluded.updated_at
         """,
-        (printer_id, printer["name"], clean_url(printer["moonrakerUrl"]), sort_order, ts, ts),
+        (
+            printer_id,
+            printer["name"],
+            clean_url(printer["moonrakerUrl"]),
+            clean_url(printer.get("mainsailUrl") or derive_mainsail_url(printer["moonrakerUrl"])),
+            sort_order,
+            ts,
+            ts,
+        ),
     )
     active_toolhead_ids = []
     for index, toolhead in enumerate(printer.get("toolheads") or printer.get("extruders") or []):
@@ -391,6 +413,15 @@ def slug(value: str) -> str:
     return "-".join(part for part in cleaned.split("-") if part) or f"printer-{int(time.time())}"
 
 
+def derive_mainsail_url(moonraker_url: str) -> str:
+    parsed = urllib.parse.urlparse(clean_url(moonraker_url))
+    if not parsed.hostname:
+        return ""
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    scheme = parsed.scheme if parsed.scheme in {"http", "https"} else "http"
+    return f"{scheme}://{host}"
+
+
 def get_config(conn: sqlite3.Connection) -> dict:
     printers = []
     for printer in conn.execute("SELECT * FROM printers ORDER BY sort_order, name"):
@@ -410,6 +441,7 @@ def get_config(conn: sqlite3.Connection) -> dict:
                 "id": printer["id"],
                 "name": printer["name"],
                 "moonrakerUrl": printer["moonraker_url"],
+                "mainsailUrl": printer["mainsail_url"] or derive_mainsail_url(printer["moonraker_url"]),
                 "enabled": bool(printer["enabled"]),
                 "toolheads": toolheads,
                 "extruders": [
@@ -438,6 +470,8 @@ def get_assignments(conn: sqlite3.Connection) -> dict:
             "spoolId": row["spool_id"],
             "assignedAt": row["assigned_at"],
             "note": row["note"],
+            "syncPending": bool(row["sync_pending"]),
+            "lastSyncError": row["last_sync_error"],
         }
     return assignments
 
@@ -468,12 +502,34 @@ def moonraker_print_state(printer: sqlite3.Row) -> str:
     return str(print_stats.get("state") or "unknown").lower()
 
 
-def ensure_printer_can_change_spool(printer: sqlite3.Row) -> None:
-    state = moonraker_print_state(printer)
-    if state in {"printing", "paused"}:
-        raise RuntimeError(
-            f"{printer['name']} druckt gerade oder ist pausiert. Spulen und Spulenprofile können während eines Drucks nicht geändert werden."
-        )
+def url_is_reachable(url: str) -> bool:
+    if not clean_url(url):
+        return False
+    request = urllib.request.Request(clean_url(url), headers={"Accept": "text/html,application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            response.read(1)
+        return True
+    except urllib.error.HTTPError:
+        return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def printer_connection_state(printer: sqlite3.Row) -> tuple[str, str, str]:
+    try:
+        print_state = moonraker_print_state(printer)
+        if print_state != "unknown":
+            return "online", print_state, ""
+        reason = "Klipper is not ready"
+    except Exception as exc:
+        print_state = "unknown"
+        reason = str(exc)
+
+    mainsail_url = printer["mainsail_url"] or derive_mainsail_url(printer["moonraker_url"])
+    if url_is_reachable(mainsail_url):
+        return "mainsail_only", print_state, reason
+    return "offline", print_state, "Printer not available"
 
 
 def toolhead_index(conn: sqlite3.Connection, printer_id: str, toolhead_id: str) -> int:
@@ -526,6 +582,60 @@ def push_local_spool_state(
     gcode = build_save_variables_gcode(index, spool_id, profile)
     http_json(f"{moonraker_base(printer)}/printer/gcode/script", "POST", {"script": gcode})
     return gcode
+
+
+def set_assignment_sync_state(
+    conn: sqlite3.Connection,
+    printer_id: str,
+    toolhead_id: str,
+    pending: bool,
+    error: str = "",
+) -> None:
+    conn.execute(
+        """
+        UPDATE assignments
+        SET sync_pending = ?, last_sync_error = ?
+        WHERE printer_id = ? AND toolhead_id = ?
+        """,
+        (1 if pending else 0, error, printer_id, toolhead_id),
+    )
+
+
+def sync_pending_assignments() -> None:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT a.printer_id, a.toolhead_id, a.spool_id, p.*
+            FROM assignments a
+            JOIN printers p ON p.id = a.printer_id
+            WHERE a.sync_pending = 1 AND p.enabled = 1
+            ORDER BY a.assigned_at
+            """
+        ).fetchall()
+
+    for row in rows:
+        connection_state, print_state, reason = printer_connection_state(row)
+        if connection_state != "online" or print_state in {"printing", "paused"}:
+            error = reason or f"Printer is {print_state}"
+            with connect() as conn:
+                set_assignment_sync_state(conn, row["printer_id"], row["toolhead_id"], True, error)
+            continue
+        try:
+            with connect() as conn:
+                push_local_spool_state(conn, row, row["printer_id"], row["toolhead_id"], row["spool_id"])
+                set_assignment_sync_state(conn, row["printer_id"], row["toolhead_id"], False)
+        except Exception as exc:
+            with connect() as conn:
+                set_assignment_sync_state(conn, row["printer_id"], row["toolhead_id"], True, str(exc))
+
+
+def pending_sync_worker() -> None:
+    while True:
+        try:
+            sync_pending_assignments()
+        except Exception as exc:
+            print(f"Pending printer synchronization failed: {exc}")
+        time.sleep(10)
 
 
 def build_profile_gcode(toolhead: sqlite3.Row, profile: dict, options: dict | None = None) -> str:
@@ -759,15 +869,28 @@ class Handler(SimpleHTTPRequestHandler):
             """,
             (spool_id,),
         ).fetchall()
+        printer_states = []
         for printer in assigned:
-            ensure_printer_can_change_spool(printer)
+            connection_state, print_state, reason = printer_connection_state(printer)
+            if connection_state == "online" and print_state in {"printing", "paused"}:
+                return self.send_error_json(
+                    HTTPStatus.CONFLICT,
+                    f"{printer['name']} druckt gerade oder ist pausiert. Spulen und Spulenprofile können während eines Drucks nicht geändert werden.",
+                )
+            printer_states.append((printer, connection_state, reason))
 
         profile = save_spool_profile(conn, spool_id, body)
         pushed = []
-        for printer in assigned:
+        deferred = []
+        for printer, connection_state, reason in printer_states:
+            if connection_state != "online":
+                set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], True, reason)
+                deferred.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"]})
+                continue
             script = push_local_spool_state(conn, printer, printer["id"], printer["toolhead_id"], spool_id)
+            set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], False)
             pushed.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"], "script": script})
-        return self.send_json(HTTPStatus.OK, {"profile": profile, "pushed": pushed})
+        return self.send_json(HTTPStatus.OK, {"profile": profile, "pushed": pushed, "deferred": deferred})
 
     def assign(self, conn: sqlite3.Connection, printer_id: str, toolhead_id: str) -> None:
         body = self.read_json()
@@ -782,7 +905,17 @@ class Handler(SimpleHTTPRequestHandler):
         if not printer or not toolhead:
             return self.send_error_json(HTTPStatus.NOT_FOUND, "Drucker oder Toolhead wurde nicht gefunden.")
 
-        ensure_printer_can_change_spool(printer)
+        connection_state, print_state, connection_reason = printer_connection_state(printer)
+        if spool_id is not None and connection_state == "offline":
+            return self.send_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "Printer not available", "code": "printer_not_available"},
+            )
+        if connection_state == "online" and print_state in {"printing", "paused"}:
+            return self.send_error_json(
+                HTTPStatus.CONFLICT,
+                f"{printer['name']} druckt gerade oder ist pausiert. Spulen und Spulenprofile können während eines Drucks nicht geändert werden.",
+            )
         conn.execute("BEGIN IMMEDIATE")
         if spool_id is not None:
             conflict = conn.execute(
@@ -825,7 +958,10 @@ class Handler(SimpleHTTPRequestHandler):
                         },
                     },
                 )
-        local_script = push_local_spool_state(conn, printer, printer_id, toolhead_id, spool_id)
+        local_script = ""
+        sync_pending = connection_state != "online"
+        if not sync_pending:
+            local_script = push_local_spool_state(conn, printer, printer_id, toolhead_id, spool_id)
 
         previous = conn.execute(
             "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",
@@ -837,14 +973,25 @@ class Handler(SimpleHTTPRequestHandler):
 
         conn.execute(
             """
-            INSERT INTO assignments (printer_id, toolhead_id, spool_id, assigned_at, note)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO assignments
+              (printer_id, toolhead_id, spool_id, assigned_at, note, sync_pending, last_sync_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(printer_id, toolhead_id) DO UPDATE SET
               spool_id = excluded.spool_id,
               assigned_at = excluded.assigned_at,
-              note = excluded.note
+              note = excluded.note,
+              sync_pending = excluded.sync_pending,
+              last_sync_error = excluded.last_sync_error
             """,
-            (printer_id, toolhead_id, spool_id, ts, note),
+            (
+                printer_id,
+                toolhead_id,
+                spool_id,
+                ts,
+                note,
+                1 if sync_pending else 0,
+                connection_reason if sync_pending else "",
+            ),
         )
         conn.execute(
             """
@@ -866,6 +1013,8 @@ class Handler(SimpleHTTPRequestHandler):
         )
 
         warning = ""
+        if sync_pending:
+            warning = "Assignment saved. Waiting for Klipper."
         if spool_id is not None and bool_setting(conn, "sync_spool_location"):
             try:
                 base = clean_url(setting(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL))
@@ -875,9 +1024,15 @@ class Handler(SimpleHTTPRequestHandler):
                     {"location": f"{printer['name']} / {toolhead['name']}"},
                 )
             except Exception as exc:
-                warning = f"Zuweisung gespeichert, aber Spoolman-Standort konnte nicht aktualisiert werden: {exc}"
+                location_warning = f"Spoolman location could not be updated: {exc}"
+                warning = f"{warning} {location_warning}".strip()
 
-        payload = {"assignments": get_assignments(conn), "history": get_history(conn, 20), "localScript": local_script}
+        payload = {
+            "assignments": get_assignments(conn),
+            "history": get_history(conn, 20),
+            "localScript": local_script,
+            "pendingSync": sync_pending,
+        }
         if warning:
             payload["warning"] = warning
         self.send_json(HTTPStatus.OK, payload)
@@ -932,6 +1087,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
+    threading.Thread(target=pending_sync_worker, name="spoolhub-pending-sync", daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"SpoolHub laeuft auf http://localhost:{PORT}")
     print(f"SQLite: {DB_PATH}")

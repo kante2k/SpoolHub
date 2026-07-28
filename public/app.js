@@ -196,6 +196,7 @@ function renderPrinters() {
       const rows = toolheads
         .map((toolhead) => {
           const spool = getAssignedSpool(printer.id, toolhead.id);
+          const assignment = state.assignments?.[printer.id]?.[toolhead.id];
           const currentSpoolId = spool?.id ?? "";
           const options = [
             `<option value="">${escapeHtml(t("spool.none"))}</option>`,
@@ -215,6 +216,7 @@ function renderPrinters() {
                   <select class="assignment-select" aria-label="${escapeHtml(t("spool.assignmentFor", { name: toolhead.name }))}">${options}</select>
                 </label>
                 <span>${escapeHtml(spool ? profileLabel(spool.profile) : t("spool.profileFromAssignment"))}</span>
+                ${assignment?.syncPending ? `<span class="assignment-owner">${escapeHtml(t("status.syncPending"))}</span>` : ""}
               </div>
             </div>
           `;
@@ -361,7 +363,10 @@ async function assignSpool(spoolId, printerId, toolheadId) {
   });
   state.assignments = result.assignments;
   state.history = result.history || state.history;
-  setConnectionState(result.warning || t("status.assignmentSaved"), result.warning ? "error" : "ok");
+  setConnectionState(
+    result.warning || t("status.assignmentSaved"),
+    result.pendingSync ? "" : (result.warning ? "error" : "ok")
+  );
   render();
 }
 
@@ -423,6 +428,7 @@ function renderPrinterEditor(printers) {
     $("[data-field='id']", card).value = printer.id || "";
     $("[data-field='name']", card).value = printer.name || "";
     $("[data-field='moonrakerUrl']", card).value = printer.moonrakerUrl || "";
+    $("[data-field='mainsailUrl']", card).value = printer.mainsailUrl || "";
     const extruderEditor = $(".extruder-editor", card);
 
     (printer.toolheads || printer.extruders || []).forEach((toolhead, toolheadIndex) => {
@@ -450,6 +456,7 @@ function readEditorModel() {
     id: $("[data-field='id']", card).value.trim(),
     name: $("[data-field='name']", card).value.trim(),
     moonrakerUrl: $("[data-field='moonrakerUrl']", card).value.trim().replace(/\/+$/, ""),
+    mainsailUrl: $("[data-field='mainsailUrl']", card).value.trim().replace(/\/+$/, ""),
     toolheads: $$(".extruder-line", card).map((line, toolheadIndex) => ({
       id: $("[data-field='toolhead-id']", line).value.trim(),
       name: $("[data-field='toolhead-name']", line).value.trim(),
@@ -519,6 +526,7 @@ elements.addPrinterButton.addEventListener("click", () => {
     id: printerId,
     name: `Printer ${printers.length + 1}`,
     moonrakerUrl: "http://localhost:7125",
+    mainsailUrl: "http://localhost",
     toolheads: [{
       id: `${printerId}-t0`,
       name: "T0",

@@ -138,14 +138,17 @@ function renderSpoolOptions(currentSpoolId, printerId, toolheadId) {
 
 function renderAssignmentControls(printer, toolhead, spool, locked) {
   const currentSpoolId = spool?.id ?? state.assignments?.[printer.id]?.[toolhead.id]?.spoolId ?? "";
+  const syncPending = state.assignments?.[printer.id]?.[toolhead.id]?.syncPending;
   const disabled = locked ? " disabled" : "";
   const lockText = locked ? `<span class="assignment-lock">${escapeHtml(t("status.assignmentLocked", { state: printerPrintState(printer.id) }))}</span>` : "";
+  const pendingText = syncPending ? `<span class="assignment-lock">${escapeHtml(t("status.syncPending"))}</span>` : "";
   return `
     <form class="assignment-form" data-printer-id="${escapeHtml(printer.id)}" data-toolhead-id="${escapeHtml(toolhead.id)}">
       <select class="spool-select" name="spoolId"${disabled} aria-label="Spule fuer ${escapeHtml(toolhead.name)}">
         ${renderSpoolOptions(currentSpoolId, printer.id, toolhead.id)}
       </select>
       ${lockText}
+      ${pendingText}
     </form>
   `;
 }
@@ -276,7 +279,10 @@ async function assignSpool(printerId, toolheadId, spoolId) {
   });
   state.assignments = result.assignments;
   await loadPrinterStatuses();
-  setStatus(result.warning || t("status.assignmentSaved"), result.warning ? "error" : "ok");
+  setStatus(
+    result.warning || t("status.assignmentSaved"),
+    result.pendingSync ? "locked" : (result.warning ? "error" : "ok")
+  );
   render();
 }
 

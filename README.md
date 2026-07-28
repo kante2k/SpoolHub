@@ -21,6 +21,12 @@ SpoolHub is a central spool and profile management system for multi-material pri
 
 SpoolHub blocks assignment and active-profile changes while Moonraker reports `printing` or `paused`. This prevents local print parameters from changing during an active print.
 
+Printer availability is handled in three levels:
+
+- When Klipper is ready, assignments are saved and synchronized immediately.
+- When Mainsail is reachable but Klipper is not ready, assignments are saved centrally without sending a Klipper command. Synchronization is retried automatically.
+- When the printer is fully offline, removing a spool remains possible and is synchronized later. Adding a spool returns `Printer not available`.
+
 ## Architecture
 
 - The **SpoolHub server** provides the web interface, API, and SQLite database.
@@ -63,7 +69,7 @@ The SQLite database is stored at `data/spoolhub.sqlite3` by default.
 In the SpoolHub web interface:
 
 1. Open **Settings** and check the language and Spoolman URL.
-2. Add each printer with a unique ID and its Moonraker URL.
+2. Add each printer with a unique ID, its Moonraker URL, and its Mainsail URL. The Mainsail URL defaults to the Moonraker host without port `7125`.
 3. Add its toolheads with unique IDs and the correct Klipper object names.
 4. Load the spools and use **Profile** to enter material-specific values where needed.
 5. Select a spool directly from the dropdown on the appropriate toolhead.

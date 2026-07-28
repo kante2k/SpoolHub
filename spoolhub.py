@@ -502,6 +502,14 @@ def moonraker_print_state(printer: sqlite3.Row) -> str:
     return str(print_stats.get("state") or "unknown").lower()
 
 
+def moonraker_klipper_state(printer: sqlite3.Row) -> str:
+    body = http_json(f"{moonraker_base(printer)}/printer/info")
+    if not isinstance(body, dict):
+        return "unknown"
+    result = body.get("result") or {}
+    return str(result.get("state") or "unknown").lower()
+
+
 def url_is_reachable(url: str) -> bool:
     if not clean_url(url):
         return False
@@ -518,6 +526,9 @@ def url_is_reachable(url: str) -> bool:
 
 def printer_connection_state(printer: sqlite3.Row) -> tuple[str, str, str]:
     try:
+        klipper_state = moonraker_klipper_state(printer)
+        if klipper_state != "ready":
+            raise RuntimeError(f"Klipper is not ready ({klipper_state})")
         print_state = moonraker_print_state(printer)
         if print_state != "unknown":
             return "online", print_state, ""
@@ -530,6 +541,11 @@ def printer_connection_state(printer: sqlite3.Row) -> tuple[str, str, str]:
     if url_is_reachable(mainsail_url):
         return "mainsail_only", print_state, reason
     return "offline", print_state, "Printer not available"
+
+
+def mainsail_is_reachable(printer: sqlite3.Row) -> bool:
+    mainsail_url = printer["mainsail_url"] or derive_mainsail_url(printer["moonraker_url"])
+    return url_is_reachable(mainsail_url)
 
 
 def toolhead_index(conn: sqlite3.Connection, printer_id: str, toolhead_id: str) -> int:
@@ -887,9 +903,13 @@ class Handler(SimpleHTTPRequestHandler):
                 set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], True, reason)
                 deferred.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"]})
                 continue
-            script = push_local_spool_state(conn, printer, printer["id"], printer["toolhead_id"], spool_id)
-            set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], False)
-            pushed.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"], "script": script})
+            try:
+                script = push_local_spool_state(conn, printer, printer["id"], printer["toolhead_id"], spool_id)
+                set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], False)
+                pushed.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"], "script": script})
+            except (urllib.error.URLError, OSError) as exc:
+                set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], True, str(exc))
+                deferred.append({"printerId": printer["id"], "toolheadId": printer["toolhead_id"]})
         return self.send_json(HTTPStatus.OK, {"profile": profile, "pushed": pushed, "deferred": deferred})
 
     def assign(self, conn: sqlite3.Connection, printer_id: str, toolhead_id: str) -> None:
@@ -961,7 +981,16 @@ class Handler(SimpleHTTPRequestHandler):
         local_script = ""
         sync_pending = connection_state != "online"
         if not sync_pending:
-            local_script = push_local_spool_state(conn, printer, printer_id, toolhead_id, spool_id)
+            try:
+                local_script = push_local_spool_state(conn, printer, printer_id, toolhead_id, spool_id)
+            except (urllib.error.URLError, OSError) as exc:
+                if spool_id is not None and not mainsail_is_reachable(printer):
+                    return self.send_json(
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "Printer not available", "code": "printer_not_available"},
+                    )
+                sync_pending = True
+                connection_reason = f"Klipper is not ready: {exc}"
 
         previous = conn.execute(
             "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",

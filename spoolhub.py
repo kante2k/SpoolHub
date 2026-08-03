@@ -261,6 +261,10 @@ def bool_setting(conn: sqlite3.Connection, key: str) -> bool:
     return setting(conn, key, "false").lower() in {"1", "true", "yes", "on"}
 
 
+def localized(conn: sqlite3.Connection, german: str, english: str) -> str:
+    return german if setting(conn, "language", "en") == "de" else english
+
+
 def add_printer(conn: sqlite3.Connection, printer: dict, sort_order: int = 0) -> None:
     ts = now_iso()
     printer_id = printer.get("id") or slug(printer.get("name", "printer"))
@@ -600,6 +604,73 @@ def push_local_spool_state(
     return gcode
 
 
+def moonraker_result(body: object) -> object:
+    if isinstance(body, dict) and "result" in body:
+        return body["result"]
+    return body
+
+
+def moonraker_active_spool(printer: sqlite3.Row) -> int | None:
+    body = moonraker_result(http_json(f"{moonraker_base(printer)}/server/spoolman/spool_id"))
+    if not isinstance(body, dict):
+        raise ValueError("Moonraker returned an invalid Spoolman response")
+    spool_id = body.get("spool_id")
+    return None if spool_id is None else int(spool_id)
+
+
+def set_moonraker_active_spool(printer: sqlite3.Row, spool_id: int | None) -> None:
+    http_json(
+        f"{moonraker_base(printer)}/server/spoolman/spool_id",
+        "POST",
+        {"spool_id": spool_id},
+    )
+
+
+def sync_active_spool_after_assignment(
+    printer: sqlite3.Row,
+    previous_spool_id: int | None,
+    spool_id: int | None,
+) -> bool:
+    """Move tracking only when Moonraker confirms that the replaced spool was active."""
+    if previous_spool_id is None or previous_spool_id == spool_id:
+        return False
+    if moonraker_active_spool(printer) != int(previous_spool_id):
+        return False
+    set_moonraker_active_spool(printer, spool_id)
+    return True
+
+
+def spoolman_spool(conn: sqlite3.Connection, spool_id: int) -> dict:
+    base = clean_url(setting(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL))
+    body = http_json(f"{base}/api/v1/spool/{urllib.parse.quote(str(spool_id))}")
+    if not isinstance(body, dict):
+        raise ValueError("Spoolman returned an invalid spool response")
+    return body
+
+
+def sync_spool_locations(
+    conn: sqlite3.Connection,
+    previous_spool_id: int | None,
+    spool_id: int | None,
+    location: str,
+) -> None:
+    base = clean_url(setting(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL))
+    if previous_spool_id is not None and previous_spool_id != spool_id:
+        previous = spoolman_spool(conn, int(previous_spool_id))
+        if previous.get("location") == location:
+            http_json(
+                f"{base}/api/v1/spool/{urllib.parse.quote(str(previous_spool_id))}",
+                "PATCH",
+                {"location": None},
+            )
+    if spool_id is not None:
+        http_json(
+            f"{base}/api/v1/spool/{urllib.parse.quote(str(spool_id))}",
+            "PATCH",
+            {"location": location},
+        )
+
+
 def set_assignment_sync_state(
     conn: sqlite3.Connection,
     printer_id: str,
@@ -860,18 +931,18 @@ class Handler(SimpleHTTPRequestHandler):
                 if len(parts) == 4 and parts[:2] == ["api", "assignments"] and method == "PUT":
                     return self.assign(conn, urllib.parse.unquote(parts[2]), urllib.parse.unquote(parts[3]))
 
-                return self.send_error_json(HTTPStatus.NOT_FOUND, "API-Endpunkt wurde nicht gefunden.")
+                return self.send_error_json(HTTPStatus.NOT_FOUND, localized(conn, "API-Endpunkt nicht gefunden.", "API endpoint not found."))
         except urllib.error.URLError as exc:
-            self.send_error_json(HTTPStatus.BAD_GATEWAY, "Externer Dienst ist nicht erreichbar.", str(exc))
+            self.send_error_json(HTTPStatus.BAD_GATEWAY, localized(conn, "Externer Dienst nicht erreichbar.", "External service unavailable."), str(exc))
         except sqlite3.IntegrityError as exc:
             if "spool_already_assigned" in str(exc):
-                self.send_error_json(HTTPStatus.CONFLICT, "Die Spule ist bereits einem anderen Toolhead zugewiesen.")
+                self.send_error_json(HTTPStatus.CONFLICT, localized(conn, "Die Spule ist bereits einem anderen Toolhead zugewiesen.", "The spool is already assigned to another toolhead."))
             else:
-                self.send_error_json(HTTPStatus.CONFLICT, "Datenbankkonflikt.", str(exc))
+                self.send_error_json(HTTPStatus.CONFLICT, localized(conn, "Datenbankkonflikt.", "Database conflict."), str(exc))
         except RuntimeError as exc:
             self.send_error_json(HTTPStatus.CONFLICT, str(exc))
         except Exception as exc:
-            self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, "Interner Fehler.", str(exc))
+            self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, localized(conn, "Interner Fehler.", "Internal error."), str(exc))
 
     def save_profile(self, conn: sqlite3.Connection, spool_id: int) -> None:
         body = self.read_json()
@@ -891,7 +962,11 @@ class Handler(SimpleHTTPRequestHandler):
             if connection_state == "online" and print_state in {"printing", "paused"}:
                 return self.send_error_json(
                     HTTPStatus.CONFLICT,
-                    f"{printer['name']} druckt gerade oder ist pausiert. Spulen und Spulenprofile können während eines Drucks nicht geändert werden.",
+                    localized(
+                        conn,
+                        f"{printer['name']} druckt gerade oder ist pausiert. Spulenzuordnungen und -profile können während eines Drucks nicht geändert werden.",
+                        f"{printer['name']} is printing or paused. Spool assignments and profiles cannot be changed during a print.",
+                    ),
                 )
             printer_states.append((printer, connection_state, reason))
 
@@ -923,18 +998,22 @@ class Handler(SimpleHTTPRequestHandler):
             (printer_id, toolhead_id),
         ).fetchone()
         if not printer or not toolhead:
-            return self.send_error_json(HTTPStatus.NOT_FOUND, "Drucker oder Toolhead wurde nicht gefunden.")
+            return self.send_error_json(HTTPStatus.NOT_FOUND, localized(conn, "Drucker oder Toolhead nicht gefunden.", "Printer or toolhead not found."))
 
         connection_state, print_state, connection_reason = printer_connection_state(printer)
         if spool_id is not None and connection_state == "offline":
             return self.send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
-                {"error": "Printer not available", "code": "printer_not_available"},
+                {"error": localized(conn, "Drucker nicht verfügbar.", "Printer unavailable."), "code": "printer_not_available"},
             )
         if connection_state == "online" and print_state in {"printing", "paused"}:
             return self.send_error_json(
                 HTTPStatus.CONFLICT,
-                f"{printer['name']} druckt gerade oder ist pausiert. Spulen und Spulenprofile können während eines Drucks nicht geändert werden.",
+                localized(
+                    conn,
+                    f"{printer['name']} druckt gerade oder ist pausiert. Spulenzuordnungen und -profile können während eines Drucks nicht geändert werden.",
+                    f"{printer['name']} is printing or paused. Spool assignments and profiles cannot be changed during a print.",
+                ),
             )
         conn.execute("BEGIN IMMEDIATE")
         if spool_id is not None:
@@ -978,6 +1057,12 @@ class Handler(SimpleHTTPRequestHandler):
                         },
                     },
                 )
+        previous = conn.execute(
+            "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",
+            (printer_id, toolhead_id),
+        ).fetchone()
+        previous_spool_id = previous["spool_id"] if previous else None
+
         local_script = ""
         sync_pending = connection_state != "online"
         if not sync_pending:
@@ -987,16 +1072,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if spool_id is not None and not mainsail_is_reachable(printer):
                     return self.send_json(
                         HTTPStatus.SERVICE_UNAVAILABLE,
-                        {"error": "Printer not available", "code": "printer_not_available"},
+                        {"error": localized(conn, "Drucker nicht verfügbar.", "Printer unavailable."), "code": "printer_not_available"},
                     )
                 sync_pending = True
                 connection_reason = f"Klipper is not ready: {exc}"
 
-        previous = conn.execute(
-            "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",
-            (printer_id, toolhead_id),
-        ).fetchone()
-        previous_spool_id = previous["spool_id"] if previous else None
         action = "unassign" if spool_id is None else "assign"
         ts = now_iso()
 
@@ -1043,17 +1123,32 @@ class Handler(SimpleHTTPRequestHandler):
 
         warning = ""
         if sync_pending:
-            warning = "Assignment saved. Waiting for Klipper."
-        if spool_id is not None and bool_setting(conn, "sync_spool_location"):
+            warning = localized(conn, "Zuweisung gespeichert. Klipper-Synchronisierung ausstehend.", "Assignment saved. Klipper synchronization pending.")
+        tracking_updated = False
+        if connection_state == "online":
             try:
-                base = clean_url(setting(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL))
-                http_json(
-                    f"{base}/api/v1/spool/{urllib.parse.quote(str(spool_id))}",
-                    "PATCH",
-                    {"location": f"{printer['name']} / {toolhead['name']}"},
+                tracking_updated = sync_active_spool_after_assignment(printer, previous_spool_id, spool_id)
+            except Exception as exc:
+                tracking_warning = localized(
+                    conn,
+                    f"Das Spoolman-Tracking in Moonraker konnte nicht aktualisiert werden: {exc}",
+                    f"Moonraker's Spoolman tracking could not be updated: {exc}",
+                )
+                warning = f"{warning} {tracking_warning}".strip()
+        if bool_setting(conn, "sync_spool_location"):
+            try:
+                sync_spool_locations(
+                    conn,
+                    previous_spool_id,
+                    spool_id,
+                    f"{printer['name']} / {toolhead['name']}",
                 )
             except Exception as exc:
-                location_warning = f"Spoolman location could not be updated: {exc}"
+                location_warning = localized(
+                    conn,
+                    f"Der Spoolman-Standort konnte nicht aktualisiert werden: {exc}",
+                    f"The Spoolman location could not be updated: {exc}",
+                )
                 warning = f"{warning} {location_warning}".strip()
 
         payload = {
@@ -1061,6 +1156,7 @@ class Handler(SimpleHTTPRequestHandler):
             "history": get_history(conn, 20),
             "localScript": local_script,
             "pendingSync": sync_pending,
+            "trackingUpdated": tracking_updated,
         }
         if warning:
             payload["warning"] = warning
@@ -1086,7 +1182,7 @@ class Handler(SimpleHTTPRequestHandler):
             (printer_id, toolhead_id),
         ).fetchone()
         if not printer or not toolhead:
-            return self.send_error_json(HTTPStatus.NOT_FOUND, "Drucker oder Toolhead wurde nicht gefunden.")
+            return self.send_error_json(HTTPStatus.NOT_FOUND, localized(conn, "Drucker oder Toolhead nicht gefunden.", "Printer or toolhead not found."))
 
         assignment = conn.execute(
             "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",

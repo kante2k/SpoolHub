@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SpoolHub</title>
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <div class="shell">
@@ -43,7 +43,7 @@
           <div class="panel-heading">
             <h2 data-i18n="sections.spools">Spulen</h2>
             <div class="spool-heading-actions">
-              <span id="connectionState" class="status-chip" data-i18n="status.loading">Lade...</span>
+          <span id="connectionState" class="status-chip" data-i18n="status.loading">Loading…</span>
               <input id="spoolSearch" type="search" placeholder="Material, Hersteller, Farbe..." data-i18n-placeholder="search.spools" />
             </div>
           </div>
@@ -108,8 +108,8 @@
 
         <div class="profile-grid">
           <label><span data-i18n="profile.pressureAdvance">Pressure advance</span><input id="profilePressureAdvance" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="0.045"></label>
-          <label><span data-i18n="profile.retractLength">Retract length mm</span><input id="profileRetractLength" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="1.2"></label>
-          <label><span data-i18n="profile.retractSpeed">Retract speed mm/s</span><input id="profileRetractSpeed" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="35"></label>
+          <label><span data-i18n="profile.retractLength">Retraction length (mm)</span><input id="profileRetractLength" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="1.2"></label>
+          <label><span data-i18n="profile.retractSpeed">Retraction speed (mm/s)</span><input id="profileRetractSpeed" inputmode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" placeholder="35"></label>
           <label><span data-i18n="profile.nozzleTemperature">Düsentemperatur °C</span><input id="profileNozzleTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="215"></label>
           <label><span data-i18n="profile.bedTemperature">Betttemperatur °C</span><input id="profileBedTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="60"></label>
           <label><span data-i18n="profile.chamberTemperature">Kammertemperatur °C</span><input id="profileChamberTemperature" inputmode="numeric" pattern="(?:0|[1-9][0-9]*)" placeholder="45"></label>
@@ -151,6 +151,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=13" type="module"></script>
+    <script src="app.js?v=19" type="module"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-import { applyTranslations, setLanguage, t } from "./i18n.js?v=5";
+import { applyTranslations, setLanguage, t } from "./i18n.js?v=6";
 
 const state = {
   config: null,
@@ -114,6 +114,10 @@ function printerIsLocked(printerId) {
   return ["printing", "paused"].includes(printerPrintState(printerId));
 }
 
+function printerPrintStateLabel(printerId) {
+  return t(`printState.${printerPrintState(printerId)}`);
+}
+
 function spoolOptionLabel(spool) {
   return [
     spool.name || `Spool #${spool.id}`,
@@ -122,8 +126,10 @@ function spoolOptionLabel(spool) {
   ].filter(Boolean).join(" - ");
 }
 
-function renderSpoolOptions(currentSpoolId, printerId, toolheadId) {
+function renderSpoolChoices(currentSpoolId, printerId, toolheadId) {
   const options = [`<option value="">${escapeHtml(t("spool.none"))}</option>`];
+  const menu = [`<button type="button" class="spool-combobox-option" data-value="">${escapeHtml(t("spool.none"))}</button>`];
+  let selectedLabel = t("spool.none");
   state.spools.forEach((spool) => {
     const selected = String(spool.id) === String(currentSpoolId) ? " selected" : "";
     const occupiedElsewhere = assignmentOwners(spool.id)
@@ -131,22 +137,28 @@ function renderSpoolOptions(currentSpoolId, printerId, toolheadId) {
     const ownerLabel = occupiedElsewhere.length
       ? ` - ${occupiedElsewhere.map((owner) => t("spool.assignedTo", { printer: owner.printerName, toolhead: owner.toolheadName })).join("; ")}`
       : "";
-    options.push(`<option value="${escapeHtml(spool.id)}"${selected}${occupiedElsewhere.length ? " disabled" : ""}>${escapeHtml(spoolOptionLabel(spool) + ownerLabel)}</option>`);
+    const label = `${spoolOptionLabel(spool)}${ownerLabel}`;
+    if (selected) selectedLabel = label;
+    options.push(`<option value="${escapeHtml(spool.id)}"${selected}${occupiedElsewhere.length ? " disabled" : ""}>${escapeHtml(label)}</option>`);
+    menu.push(`<button type="button" class="spool-combobox-option" data-value="${escapeHtml(spool.id)}"${occupiedElsewhere.length ? " disabled" : ""}>${escapeHtml(label)}</button>`);
   });
-  return options.join("");
+  return { options: options.join(""), menu: menu.join(""), selectedLabel };
 }
 
 function renderAssignmentControls(printer, toolhead, spool, locked) {
   const currentSpoolId = spool?.id ?? state.assignments?.[printer.id]?.[toolhead.id]?.spoolId ?? "";
   const syncPending = state.assignments?.[printer.id]?.[toolhead.id]?.syncPending;
   const disabled = locked ? " disabled" : "";
-  const lockText = locked ? `<span class="assignment-lock">${escapeHtml(t("status.assignmentLocked", { state: printerPrintState(printer.id) }))}</span>` : "";
+  const lockText = locked ? `<span class="assignment-lock">${escapeHtml(t("status.assignmentLocked", { state: printerPrintStateLabel(printer.id) }))}</span>` : "";
   const pendingText = syncPending ? `<span class="assignment-lock">${escapeHtml(t("status.syncPending"))}</span>` : "";
+  const choices = renderSpoolChoices(currentSpoolId, printer.id, toolhead.id);
   return `
     <form class="assignment-form" data-printer-id="${escapeHtml(printer.id)}" data-toolhead-id="${escapeHtml(toolhead.id)}">
-      <select class="spool-select" name="spoolId"${disabled} aria-label="Spule fuer ${escapeHtml(toolhead.name)}">
-        ${renderSpoolOptions(currentSpoolId, printer.id, toolhead.id)}
-      </select>
+      <div class="spool-combobox">
+        <input class="spool-combobox-input" type="text" value="${escapeHtml(choices.selectedLabel)}" autocomplete="off" role="combobox" aria-expanded="false" aria-label="${escapeHtml(t("spool.assignmentFor", { name: toolhead.name }))}"${disabled}>
+        <select class="spool-select" name="spoolId" tabindex="-1" aria-hidden="true"${disabled}>${choices.options}</select>
+        <div class="spool-combobox-menu" role="listbox" hidden>${choices.menu}</div>
+      </div>
       ${lockText}
       ${pendingText}
     </form>
@@ -220,7 +232,7 @@ function render() {
     const card = $(".printer-card", fragment);
     $("[data-field='printer-name']", card).textContent = printer.name;
     $("[data-field='printer-url']", card).textContent = printer.moonrakerUrl;
-    const printState = printerPrintState(printer.id);
+    const printState = printerPrintStateLabel(printer.id);
     const toolheadBadge = $("[data-field='toolhead-count']", card);
     toolheadBadge.textContent = t("printer.toolheadState", { count: toolheads.length, state: printState });
     toolheadBadge.classList.toggle("locked", printerIsLocked(printer.id));
@@ -236,7 +248,7 @@ function setStatus(text, mode = "") {
 
 async function loadPanel() {
   try {
-    setStatus("Aktualisiere...");
+    setStatus(t("status.updating"));
     const [config, assignments, spools] = await Promise.all([
       api("/api/config"),
       api("/api/assignments"),
@@ -287,6 +299,77 @@ async function assignSpool(printerId, toolheadId, spoolId) {
 }
 
 elements.refreshButton.addEventListener("click", loadPanel);
+elements.printerGrid.addEventListener("focusin", (event) => {
+  const input = event.target.closest(".spool-combobox-input");
+  if (!input) return;
+  input.value = "";
+  const menu = input.closest(".spool-combobox").querySelector(".spool-combobox-menu");
+  menu.querySelectorAll(".spool-combobox-option").forEach((option) => {
+    option.hidden = false;
+  });
+  menu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+});
+
+elements.printerGrid.addEventListener("input", (event) => {
+  const input = event.target.closest(".spool-combobox-input");
+  if (!input) return;
+  const menu = input.closest(".spool-combobox").querySelector(".spool-combobox-menu");
+  const query = input.value.trim().toLocaleLowerCase();
+  menu.querySelectorAll(".spool-combobox-option").forEach((option) => {
+    option.hidden = Boolean(query) && !option.textContent.toLocaleLowerCase().includes(query);
+  });
+  menu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+});
+
+elements.printerGrid.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".spool-combobox-menu")) event.preventDefault();
+});
+
+elements.printerGrid.addEventListener("keydown", (event) => {
+  const input = event.target.closest(".spool-combobox-input");
+  if (!input) return;
+  const combobox = input.closest(".spool-combobox");
+  if (event.key === "Escape") {
+    combobox.querySelector(".spool-combobox-menu").hidden = true;
+    input.setAttribute("aria-expanded", "false");
+  }
+  if (event.key === "Enter") {
+    const option = Array.from(combobox.querySelectorAll(".spool-combobox-option"))
+      .find((item) => !item.hidden && !item.disabled);
+    if (option) {
+      event.preventDefault();
+      option.click();
+    }
+  }
+});
+
+elements.printerGrid.addEventListener("click", (event) => {
+  const option = event.target.closest(".spool-combobox-option");
+  if (!option || option.disabled) return;
+  const combobox = option.closest(".spool-combobox");
+  const input = combobox.querySelector(".spool-combobox-input");
+  const select = combobox.querySelector(".spool-select");
+  select.value = option.dataset.value;
+  input.value = option.textContent.trim();
+  combobox.querySelector(".spool-combobox-menu").hidden = true;
+  input.setAttribute("aria-expanded", "false");
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+});
+
+elements.printerGrid.addEventListener("focusout", (event) => {
+  const input = event.target.closest(".spool-combobox-input");
+  if (!input) return;
+  setTimeout(() => {
+    const combobox = input.closest(".spool-combobox");
+    const select = combobox.querySelector(".spool-select");
+    combobox.querySelector(".spool-combobox-menu").hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    input.value = select.selectedOptions[0]?.textContent || t("spool.none");
+  }, 100);
+});
+
 elements.printerGrid.addEventListener("change", async (event) => {
   const select = event.target.closest(".spool-select");
   if (!select) return;
@@ -302,6 +385,7 @@ elements.printerGrid.addEventListener("change", async (event) => {
   } catch (error) {
     console.error(error);
     select.value = String(previousValue);
+    select.closest(".spool-combobox").querySelector(".spool-combobox-input").value = select.selectedOptions[0]?.textContent || t("spool.none");
     setStatus(error.message, "error");
   } finally {
     select.disabled = false;
@@ -311,4 +395,6 @@ elements.printerGrid.addEventListener("change", async (event) => {
 setLanguage("en");
 applyTranslations();
 loadPanel();
-setInterval(loadPanel, 10000);
+setInterval(() => {
+  if (!document.activeElement?.closest(".spool-combobox")) loadPanel();
+}, 10000);

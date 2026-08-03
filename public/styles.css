@@ -279,8 +279,60 @@ select {
   font-size: 0.78rem;
 }
 
-.assignment-select {
+.spool-combobox {
+  position: relative;
+}
+
+.spool-combobox-input {
+  width: 100%;
   min-height: 36px;
+}
+
+.assignment-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.spool-combobox-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 35%);
+}
+
+.spool-combobox-option {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.spool-combobox-option[hidden] {
+  display: none;
+}
+
+.spool-combobox-option:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.spool-combobox-option:disabled {
+  opacity: 0.45;
 }
 
 .spool-card {

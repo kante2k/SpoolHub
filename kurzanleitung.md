@@ -93,6 +93,8 @@ variable_apply_part_cooling_fan: 1
 
 Danach Klipper neu laden.
 
+Jeder erfolgreiche Toolwechsel muss das passende `_SPOOLHUB_APPLY_Tn`-Makro aufrufen. Das Makro setzt die aktive Spule über Moonrakers Spoolman-Plugin; Moonraker meldet den folgenden Verbrauch anschließend an Spoolman. Wird in SpoolHub die gerade von Moonraker getrackte Spule ersetzt, übernimmt SpoolHub die neue ID. Änderungen an inaktiven Toolheads verändern die aktive Tracking-Spule nicht.
+
 ## 8. Mainsail
 
 Der Client-Installer kann den SpoolHub-Menüpunkt direkt installieren. Nach der Installation Mainsail mit `Strg+F5` vollständig neu laden.

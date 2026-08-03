@@ -25,6 +25,8 @@ Printer availability is handled in three levels:
 
 - When Klipper is ready, assignments are saved and synchronized immediately.
 - When Mainsail is reachable but Klipper is not ready, assignments are saved centrally without sending a Klipper command. Synchronization is retried automatically.
+- Moonraker's Spoolman component remains responsible for consumption tracking. If an assignment replaces the spool currently tracked by Moonraker, SpoolHub moves tracking to the replacement spool. Assignments on inactive toolheads do not change the active tracking spool.
+- When location synchronization is enabled, SpoolHub clears the previous spool's matching toolhead location before assigning that location to the replacement spool. A location changed manually in Spoolman is preserved.
 - When the printer is fully offline, removing a spool remains possible and is synchronized later. Adding a spool returns `Printer not available`.
 
 ## Architecture
@@ -143,6 +145,8 @@ variable_apply_part_cooling_fan: 1
 ```
 
 Set a value to `1` to enable that section or `0` to disable it. Reload Klipper after changing these options.
+
+Each successful tool change must call the matching `_SPOOLHUB_APPLY_Tn` macro. The macro uses Moonraker's `spoolman_set_active_spool` remote method, so subsequent extrusion is reported by the standard Moonraker Spoolman integration.
 
 Part cooling fan speed is stored in the spool profile as a value from `0` to `100` percent. SpoolHub automatically converts it to the Klipper `M106` range from `0` to `255`.
 

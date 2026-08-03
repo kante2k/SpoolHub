@@ -119,6 +119,21 @@ Spools assigned elsewhere are disabled in the dropdown. To move a spool, first s
 
 ## Klipper client installation
 
+### Required `save_variables` configuration
+
+The `[save_variables]` section is a required part of the SpoolHub client installation. SpoolHub stores the assigned spool IDs and profile values in this Klipper file so that they remain available after a restart and while the SpoolHub server is unavailable.
+
+Before running `client_install.sh`, check whether your Klipper configuration already contains a `[save_variables]` section. If it does not exist, add the following section manually to `printer.cfg`:
+
+```ini
+[save_variables]
+filename: ~/printer_data/config/saved_vars.cfg
+```
+
+Klipper must contain exactly one `[save_variables]` section. Do not add this example if another configuration file or included file already defines one. The client installer detects an existing section and reuses its configured filename.
+
+After adding the section, restart or reload Klipper and then continue with the client installation.
+
 From a local clone of the repository, run on every printer:
 
 ```bash
@@ -230,7 +245,7 @@ sudo REMOVE_DATA=y bash /opt/spoolhub/server_uninstall.sh
 ## Important notes
 
 - SpoolHub and Moonraker must be reachable when assigning a spool.
-- Klipper requires exactly one `[save_variables]` section. The installer reuses an existing section.
+- The `[save_variables]` section is a required part of the client installation. Klipper requires exactly one such section, and the installer reuses the existing configuration.
 - Profile decimals use a dot, for example `0.045`.
 - Rerun the client installer after changing a printer ID or toolhead IDs.
 - A spool cannot be assigned to multiple toolheads at the same time.

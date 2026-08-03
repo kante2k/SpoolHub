@@ -38,9 +38,48 @@ Printer availability is handled in three levels:
 
 The Klipper macros do not require a connection to the SpoolHub server during a print.
 
+## Download from GitHub
+
+Install Git if it is not already available:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+```
+
+Clone the SpoolHub repository:
+
+```bash
+git clone https://github.com/kante2k/SpoolHub.git
+cd SpoolHub
+```
+
+Run the server installer from this directory on the computer that will host SpoolHub. On each Klipper printer, clone the same repository and run the client installer from the cloned directory.
+
+To download future updates:
+
+```bash
+cd SpoolHub
+git pull --ff-only
+```
+
+After pulling an update, rerun the appropriate installer:
+
+```bash
+sudo bash server_install.sh
+```
+
+or, on a Klipper printer:
+
+```bash
+sudo bash client_install.sh
+```
+
+The installers copy the required files to their runtime directories. Existing server data, spool profiles, and assignments are preserved when the server installer is run again.
+
 ## Server installation
 
-Run on the computer that should host SpoolHub:
+From the cloned repository, run on the computer that should host SpoolHub:
 
 ```bash
 sudo bash server_install.sh
@@ -80,7 +119,7 @@ Spools assigned elsewhere are disabled in the dropdown. To move a spool, first s
 
 ## Klipper client installation
 
-Run on every printer:
+From a local clone of the repository, run on every printer:
 
 ```bash
 sudo bash client_install.sh

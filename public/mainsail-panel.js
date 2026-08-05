@@ -1,4 +1,4 @@
-import { applyTranslations, setLanguage, t } from "./i18n.js?v=6";
+import { applyTranslations, setLanguage, t } from "./i18n.js?v=7";
 
 const state = {
   config: null,
@@ -231,10 +231,11 @@ function render() {
     const fragment = elements.printerTemplate.content.cloneNode(true);
     const card = $(".printer-card", fragment);
     $("[data-field='printer-name']", card).textContent = printer.name;
-    $("[data-field='printer-url']", card).textContent = printer.moonrakerUrl;
-    const printState = printerPrintStateLabel(printer.id);
+    const managed = printer.connectionMode === "managed";
+    $("[data-field='printer-url']", card).textContent = managed ? t("printer.managedOffline") : printer.moonrakerUrl;
+    const printState = managed ? t("printer.managedOffline") : printerPrintStateLabel(printer.id);
     const toolheadBadge = $("[data-field='toolhead-count']", card);
-    toolheadBadge.textContent = t("printer.toolheadState", { count: toolheads.length, state: printState });
+    toolheadBadge.textContent = managed ? t("printer.toolheadCount", { count: toolheads.length }) : t("printer.toolheadState", { count: toolheads.length, state: printState });
     toolheadBadge.classList.toggle("locked", printerIsLocked(printer.id));
     $("[data-field='toolheads']", card).innerHTML = toolheads.map((toolhead) => renderToolhead(printer, toolhead)).join("");
     elements.printerGrid.appendChild(fragment);
@@ -274,11 +275,12 @@ async function loadPrinterStatuses() {
   const printers = selectedPrinterId
     ? allPrinters.filter((printer) => String(printer.id) === selectedPrinterId)
     : allPrinters;
+  const connectedPrinters = printers.filter((printer) => printer.connectionMode !== "managed");
   const results = await Promise.allSettled(
-    printers.map((printer) => api(`/api/moonraker/${encodeURIComponent(printer.id)}/status`))
+    connectedPrinters.map((printer) => api(`/api/moonraker/${encodeURIComponent(printer.id)}/status`))
   );
   const statuses = {};
-  printers.forEach((printer, index) => {
+  connectedPrinters.forEach((printer, index) => {
     statuses[printer.id] = results[index].status === "fulfilled" ? results[index].value : null;
   });
   state.printerStatus = statuses;

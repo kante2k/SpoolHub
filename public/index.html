@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SpoolHub</title>
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <div class="shell">
@@ -125,6 +125,10 @@
 
     <template id="printerEditorTemplate">
       <article class="editor-card">
+        <label class="checkbox-line">
+          <input data-field="managed-offline" type="checkbox" />
+          <span data-i18n="editor.managedOffline">Nur offline verwalten – keine Daten an den Drucker übertragen</span>
+        </label>
         <div class="editor-grid">
           <label>
             <span data-i18n="editor.printerId">Drucker-ID</span>
@@ -136,11 +140,11 @@
           </label>
           <label>
             <span data-i18n="editor.moonrakerUrl">Moonraker URL</span>
-            <input data-field="moonrakerUrl" type="url" required />
+            <input data-field="moonrakerUrl" type="url" />
           </label>
           <label>
             <span data-i18n="editor.mainsailUrl">Mainsail URL</span>
-            <input data-field="mainsailUrl" type="url" required />
+            <input data-field="mainsailUrl" type="url" />
           </label>
         </div>
         <div class="extruder-editor"></div>
@@ -151,6 +155,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=19" type="module"></script>
+    <script src="app.js?v=22" type="module"></script>
   </body>
 </html>

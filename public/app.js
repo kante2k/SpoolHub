@@ -1,4 +1,4 @@
-import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=6";
+import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=7";
 
 const state = {
   config: null,
@@ -242,7 +242,7 @@ function renderPrinters() {
           <div class="printer-title">
             <div>
               <h3>${escapeHtml(printer.name)}</h3>
-              <small>${escapeHtml(printer.moonrakerUrl)}</small>
+              <small>${escapeHtml(printer.connectionMode === "managed" ? t("printer.managedOffline") : printer.moonrakerUrl)}</small>
             </div>
             <span class="status-chip">${escapeHtml(t("printer.toolheadCount", { count: toolheads.length }))}</span>
           </div>
@@ -256,8 +256,19 @@ function renderPrinters() {
     const combobox = input.closest(".spool-combobox");
     const menu = $(".spool-combobox-menu", combobox);
     const select = $(".assignment-select", combobox);
+    const positionMenu = () => {
+      menu.classList.remove("opens-upward");
+      const inputRect = input.getBoundingClientRect();
+      const desiredHeight = Math.min(menu.scrollHeight, 260) + 6;
+      const spaceBelow = window.innerHeight - inputRect.bottom;
+      const spaceAbove = inputRect.top;
+      if (spaceBelow < desiredHeight && spaceAbove > spaceBelow) {
+        menu.classList.add("opens-upward");
+      }
+    };
     const close = () => {
       menu.hidden = true;
+      menu.classList.remove("opens-upward");
       input.setAttribute("aria-expanded", "false");
       input.value = select.selectedOptions[0]?.textContent || t("spool.none");
     };
@@ -267,6 +278,7 @@ function renderPrinters() {
         option.hidden = Boolean(query) && !option.textContent.toLocaleLowerCase().includes(query);
       });
       menu.hidden = false;
+      positionMenu();
       input.setAttribute("aria-expanded", "true");
     };
     input.addEventListener("focus", () => {
@@ -303,7 +315,8 @@ function renderPrinters() {
       const previousValue = state.assignments?.[row.dataset.printerId]?.[row.dataset.toolheadId]?.spoolId ?? "";
       try {
         select.disabled = true;
-        setConnectionState(t("status.assigning"), "");
+        const printer = state.config?.printers?.find((item) => item.id === row.dataset.printerId);
+        setConnectionState(t(printer?.connectionMode === "managed" ? "status.saving" : "status.assigning"), "");
         await assignSpool(select.value, row.dataset.printerId, row.dataset.toolheadId);
       } catch (error) {
         console.error(error);
@@ -489,6 +502,7 @@ function renderPrinterEditor(printers) {
     $("[data-field='name']", card).value = printer.name || "";
     $("[data-field='moonrakerUrl']", card).value = printer.moonrakerUrl || "";
     $("[data-field='mainsailUrl']", card).value = printer.mainsailUrl || "";
+    $("[data-field='managed-offline']", card).checked = printer.connectionMode === "managed";
     const extruderEditor = $(".extruder-editor", card);
 
     (printer.toolheads || printer.extruders || []).forEach((toolhead, toolheadIndex) => {
@@ -506,9 +520,25 @@ function renderPrinterEditor(printers) {
     card.dataset.printerIndex = printerIndex;
     applyTranslations(template);
     elements.printerEditor.appendChild(template);
+    updatePrinterEditorMode(elements.printerEditor.lastElementChild);
   });
 
   bindEditorEvents();
+}
+
+function updatePrinterEditorMode(card) {
+  const managed = $("[data-field='managed-offline']", card).checked;
+  for (const field of ["moonrakerUrl", "mainsailUrl"]) {
+    const input = $(`[data-field='${field}']`, card);
+    input.disabled = managed;
+    input.required = !managed;
+    input.closest("label").hidden = managed;
+  }
+  $$("[data-field='toolhead-klipper-object']", card).forEach((input) => {
+    input.disabled = managed;
+    input.required = !managed;
+    input.closest("label").hidden = managed;
+  });
 }
 
 function readEditorModel() {
@@ -517,6 +547,7 @@ function readEditorModel() {
     name: $("[data-field='name']", card).value.trim(),
     moonrakerUrl: $("[data-field='moonrakerUrl']", card).value.trim().replace(/\/+$/, ""),
     mainsailUrl: $("[data-field='mainsailUrl']", card).value.trim().replace(/\/+$/, ""),
+    connectionMode: $("[data-field='managed-offline']", card).checked ? "managed" : "connected",
     toolheads: $$(".extruder-line", card).map((line, toolheadIndex) => ({
       id: $("[data-field='toolhead-id']", line).value.trim(),
       name: $("[data-field='toolhead-name']", line).value.trim(),
@@ -526,6 +557,9 @@ function readEditorModel() {
 }
 
 function bindEditorEvents() {
+  $$("[data-field='managed-offline']", elements.printerEditor).forEach((input) => {
+    input.addEventListener("change", () => updatePrinterEditorMode(input.closest(".editor-card")));
+  });
   $$("[data-action='add-extruder']", elements.printerEditor).forEach((button) => {
     button.addEventListener("click", () => {
       const printers = readEditorModel();
@@ -587,6 +621,7 @@ elements.addPrinterButton.addEventListener("click", () => {
     name: `Printer ${printers.length + 1}`,
     moonrakerUrl: "http://localhost:7125",
     mainsailUrl: "http://localhost",
+    connectionMode: "connected",
     toolheads: [{
       id: `${printerId}-t0`,
       name: "T0",

@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import closing
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,7 +44,7 @@ def connect() -> sqlite3.Connection:
 
 def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with connect() as conn:
+    with closing(connect()) as conn, conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS settings (
@@ -56,6 +57,7 @@ def init_db() -> None:
               name TEXT NOT NULL,
               moonraker_url TEXT NOT NULL,
               mainsail_url TEXT NOT NULL DEFAULT '',
+              connection_mode TEXT NOT NULL DEFAULT 'connected',
               enabled INTEGER NOT NULL DEFAULT 1,
               sort_order INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
@@ -139,6 +141,8 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     printer_columns = {row["name"] for row in conn.execute("PRAGMA table_info(printers)").fetchall()}
     if "mainsail_url" not in printer_columns:
         conn.execute("ALTER TABLE printers ADD COLUMN mainsail_url TEXT NOT NULL DEFAULT ''")
+    if "connection_mode" not in printer_columns:
+        conn.execute("ALTER TABLE printers ADD COLUMN connection_mode TEXT NOT NULL DEFAULT 'connected'")
     assignment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(assignments)").fetchall()}
     if "sync_pending" not in assignment_columns:
         conn.execute("ALTER TABLE assignments ADD COLUMN sync_pending INTEGER NOT NULL DEFAULT 0")
@@ -268,22 +272,29 @@ def localized(conn: sqlite3.Connection, german: str, english: str) -> str:
 def add_printer(conn: sqlite3.Connection, printer: dict, sort_order: int = 0) -> None:
     ts = now_iso()
     printer_id = printer.get("id") or slug(printer.get("name", "printer"))
+    connection_mode = "managed" if printer.get("connectionMode") == "managed" else "connected"
+    moonraker_url = clean_url(printer.get("moonrakerUrl", ""))
+    mainsail_url = clean_url(printer.get("mainsailUrl", ""))
+    if connection_mode == "connected" and not moonraker_url:
+        raise ValueError("Moonraker URL is required for connected printers.")
     conn.execute(
         """
-        INSERT INTO printers (id, name, moonraker_url, mainsail_url, enabled, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+        INSERT INTO printers (id, name, moonraker_url, mainsail_url, connection_mode, enabled, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           moonraker_url = excluded.moonraker_url,
           mainsail_url = excluded.mainsail_url,
+          connection_mode = excluded.connection_mode,
           sort_order = excluded.sort_order,
           updated_at = excluded.updated_at
         """,
         (
             printer_id,
             printer["name"],
-            clean_url(printer["moonrakerUrl"]),
-            clean_url(printer.get("mainsailUrl") or derive_mainsail_url(printer["moonrakerUrl"])),
+            moonraker_url,
+            mainsail_url or (derive_mainsail_url(moonraker_url) if connection_mode == "connected" else ""),
+            connection_mode,
             sort_order,
             ts,
             ts,
@@ -445,7 +456,8 @@ def get_config(conn: sqlite3.Connection) -> dict:
                 "id": printer["id"],
                 "name": printer["name"],
                 "moonrakerUrl": printer["moonraker_url"],
-                "mainsailUrl": printer["mainsail_url"] or derive_mainsail_url(printer["moonraker_url"]),
+                "mainsailUrl": printer["mainsail_url"] or (derive_mainsail_url(printer["moonraker_url"]) if printer["connection_mode"] == "connected" else ""),
+                "connectionMode": printer["connection_mode"],
                 "enabled": bool(printer["enabled"]),
                 "toolheads": toolheads,
                 "extruders": [
@@ -529,6 +541,8 @@ def url_is_reachable(url: str) -> bool:
 
 
 def printer_connection_state(printer: sqlite3.Row) -> tuple[str, str, str]:
+    if printer["connection_mode"] == "managed":
+        return "managed", "unknown", "Managed offline; printer communication is disabled"
     try:
         klipper_state = moonraker_klipper_state(printer)
         if klipper_state != "ready":
@@ -695,7 +709,7 @@ def sync_pending_assignments() -> None:
             SELECT a.printer_id, a.toolhead_id, a.spool_id, p.*
             FROM assignments a
             JOIN printers p ON p.id = a.printer_id
-            WHERE a.sync_pending = 1 AND p.enabled = 1
+            WHERE a.sync_pending = 1 AND p.enabled = 1 AND p.connection_mode = 'connected'
             ORDER BY a.assigned_at
             """
         ).fetchall()
@@ -958,6 +972,9 @@ class Handler(SimpleHTTPRequestHandler):
         ).fetchall()
         printer_states = []
         for printer in assigned:
+            if printer["connection_mode"] == "managed":
+                set_assignment_sync_state(conn, printer["id"], printer["toolhead_id"], False)
+                continue
             connection_state, print_state, reason = printer_connection_state(printer)
             if connection_state == "online" and print_state in {"printing", "paused"}:
                 return self.send_error_json(
@@ -1000,7 +1017,11 @@ class Handler(SimpleHTTPRequestHandler):
         if not printer or not toolhead:
             return self.send_error_json(HTTPStatus.NOT_FOUND, localized(conn, "Drucker oder Toolhead nicht gefunden.", "Printer or toolhead not found."))
 
-        connection_state, print_state, connection_reason = printer_connection_state(printer)
+        is_managed = printer["connection_mode"] == "managed"
+        if is_managed:
+            connection_state, print_state, connection_reason = "managed", "unknown", ""
+        else:
+            connection_state, print_state, connection_reason = printer_connection_state(printer)
         if spool_id is not None and connection_state == "offline":
             return self.send_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -1064,8 +1085,8 @@ class Handler(SimpleHTTPRequestHandler):
         previous_spool_id = previous["spool_id"] if previous else None
 
         local_script = ""
-        sync_pending = connection_state != "online"
-        if not sync_pending:
+        sync_pending = not is_managed and connection_state != "online"
+        if not is_managed and not sync_pending:
             try:
                 local_script = push_local_spool_state(conn, printer, printer_id, toolhead_id, spool_id)
             except (urllib.error.URLError, OSError) as exc:
@@ -1125,7 +1146,7 @@ class Handler(SimpleHTTPRequestHandler):
         if sync_pending:
             warning = localized(conn, "Zuweisung gespeichert. Klipper-Synchronisierung ausstehend.", "Assignment saved. Klipper synchronization pending.")
         tracking_updated = False
-        if connection_state == "online":
+        if not is_managed and connection_state == "online":
             try:
                 tracking_updated = sync_active_spool_after_assignment(printer, previous_spool_id, spool_id)
             except Exception as exc:
@@ -1166,6 +1187,8 @@ class Handler(SimpleHTTPRequestHandler):
         printer = conn.execute("SELECT * FROM printers WHERE id = ?", (printer_id,)).fetchone()
         if not printer:
             raise ValueError("Drucker wurde nicht gefunden.")
+        if printer["connection_mode"] == "managed":
+            return {"managed": True, "connectionMode": "managed"}
         toolheads = conn.execute(
             "SELECT klipper_object FROM toolheads WHERE printer_id = ? ORDER BY sort_order",
             (printer_id,),
@@ -1183,6 +1206,15 @@ class Handler(SimpleHTTPRequestHandler):
         ).fetchone()
         if not printer or not toolhead:
             return self.send_error_json(HTTPStatus.NOT_FOUND, localized(conn, "Drucker oder Toolhead nicht gefunden.", "Printer or toolhead not found."))
+        if printer["connection_mode"] == "managed":
+            return self.send_error_json(
+                HTTPStatus.CONFLICT,
+                localized(
+                    conn,
+                    "Dieser Drucker wird nur offline verwaltet. Profile werden nicht an den Drucker übertragen.",
+                    "This printer is managed offline only. Profiles are not sent to the printer.",
+                ),
+            )
 
         assignment = conn.execute(
             "SELECT spool_id FROM assignments WHERE printer_id = ? AND toolhead_id = ?",

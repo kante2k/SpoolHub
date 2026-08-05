@@ -137,6 +137,11 @@ select {
   min-width: 0;
 }
 
+.printers-panel {
+  position: relative;
+  z-index: 2;
+}
+
 .panel-heading {
   min-height: 64px;
   display: flex;
@@ -202,7 +207,12 @@ select {
 }
 
 .printer-card {
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
+}
+
+.printer-card:focus-within {
+  z-index: 30;
 }
 
 .printer-title {
@@ -213,6 +223,7 @@ select {
   padding: 12px 14px;
   background: #202329;
   border-bottom: 1px solid var(--line);
+  border-radius: 7px 7px 0 0;
 }
 
 .printer-title h3 {
@@ -310,6 +321,11 @@ select {
   border-radius: 8px;
   background: var(--panel);
   box-shadow: 0 12px 28px rgb(0 0 0 / 35%);
+}
+
+.spool-combobox-menu.opens-upward {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .spool-combobox-option {
@@ -486,6 +502,10 @@ label {
 
 label span {
   font-size: 0.9rem;
+}
+
+.editor-card label[hidden] {
+  display: none;
 }
 
 .checkbox-line {

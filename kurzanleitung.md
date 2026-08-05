@@ -23,6 +23,12 @@ Unter **Einstellungen**:
 3. Toolheads mit passender Klipper-Objektbezeichnung anlegen.
 4. Einstellungen speichern.
 
+### Reine Offline-Verwaltung
+
+Ein Drucker kann auch ohne Client ausschließlich zur Verwaltung von Spulenzuordnungen angelegt werden. Aktiviere dazu beim Drucker in den **Einstellungen** die Option **„Nur offline verwalten – keine Daten an den Drucker übertragen“** und lege für jeden physischen Platz einen Toolhead an, zum Beispiel `AMS 1 / Slot 1` bis `AMS 1 / Slot 4`. Moonraker- und Mainsail-URL sind dann nicht erforderlich.
+
+In diesem Modus speichert SpoolHub nur die Zuordnung und Historie. Es werden keine Statusabfragen, G-Code-Befehle, Profiländerungen oder späteren Synchronisierungsversuche an den Drucker gesendet.
+
 ## 3. Spulenprofile pflegen
 
 In der Spulenliste auf **Profil** klicken. Verfügbar sind:

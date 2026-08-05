@@ -1,5 +1,8 @@
 import sqlite3
+import tempfile
 import unittest
+from contextlib import closing
+from pathlib import Path
 from unittest.mock import call, patch
 
 import spoolhub
@@ -77,6 +80,92 @@ class SpoolmanLocationTests(unittest.TestCase):
             ],
         )
 
+
+class ManagedOfflinePrinterTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.original_db_path = spoolhub.DB_PATH
+        spoolhub.DB_PATH = Path(self.temp_dir.name) / "spoolhub.sqlite3"
+        spoolhub.init_db()
+        with closing(spoolhub.connect()) as conn, conn:
+            conn.execute("DELETE FROM printers")
+            spoolhub.add_printer(
+                conn,
+                {
+                    "id": "bambu-x1c",
+                    "name": "Bambu Lab X1C",
+                    "connectionMode": "managed",
+                    "moonrakerUrl": "",
+                    "mainsailUrl": "",
+                    "toolheads": [
+                        {"id": "ams-1-slot-1", "name": "AMS 1 / Slot 1", "klipperObject": ""}
+                    ],
+                },
+            )
+
+    def tearDown(self):
+        spoolhub.DB_PATH = self.original_db_path
+        self.temp_dir.cleanup()
+
+    def handler(self, body):
+        handler = object.__new__(spoolhub.Handler)
+        handler.read_json = lambda: body
+        handler.response = None
+        handler.send_json = lambda status, payload: setattr(handler, "response", (status, payload))
+        handler.send_error_json = lambda status, message, details="": setattr(
+            handler, "response", (status, {"error": message, "details": details})
+        )
+        return handler
+
+    def test_config_preserves_managed_mode_and_empty_urls(self):
+        with closing(spoolhub.connect()) as conn, conn:
+            printer = spoolhub.get_config(conn)["printers"][0]
+
+        self.assertEqual(printer["connectionMode"], "managed")
+        self.assertEqual(printer["moonrakerUrl"], "")
+        self.assertEqual(printer["mainsailUrl"], "")
+
+    @patch("spoolhub.sync_active_spool_after_assignment")
+    @patch("spoolhub.push_local_spool_state")
+    @patch("spoolhub.printer_connection_state")
+    def test_assignment_is_saved_without_printer_communication(self, connection_state, push_state, sync_tracking):
+        handler = self.handler({"spoolId": 42})
+
+        with closing(spoolhub.connect()) as conn, conn:
+            spoolhub.Handler.assign(handler, conn, "bambu-x1c", "ams-1-slot-1")
+            assignment = conn.execute(
+                "SELECT spool_id, sync_pending, last_sync_error FROM assignments WHERE printer_id = ? AND toolhead_id = ?",
+                ("bambu-x1c", "ams-1-slot-1"),
+            ).fetchone()
+
+        self.assertEqual(tuple(assignment), (42, 0, ""))
+        self.assertFalse(handler.response[1]["pendingSync"])
+        connection_state.assert_not_called()
+        push_state.assert_not_called()
+        sync_tracking.assert_not_called()
+
+    @patch("spoolhub.push_local_spool_state")
+    @patch("spoolhub.printer_connection_state")
+    def test_profile_update_is_not_sent_or_deferred(self, connection_state, push_state):
+        with closing(spoolhub.connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO assignments (printer_id, toolhead_id, spool_id, assigned_at) VALUES (?, ?, ?, ?)",
+                ("bambu-x1c", "ams-1-slot-1", 42, spoolhub.now_iso()),
+            )
+        handler = self.handler({"nozzleTemperature": 220})
+
+        with closing(spoolhub.connect()) as conn, conn:
+            spoolhub.Handler.save_profile(handler, conn, 42)
+            assignment = conn.execute(
+                "SELECT sync_pending FROM assignments WHERE printer_id = ? AND toolhead_id = ?",
+                ("bambu-x1c", "ams-1-slot-1"),
+            ).fetchone()
+
+        self.assertEqual(assignment["sync_pending"], 0)
+        self.assertEqual(handler.response[1]["pushed"], [])
+        self.assertEqual(handler.response[1]["deferred"], [])
+        connection_state.assert_not_called()
+        push_state.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

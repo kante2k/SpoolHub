@@ -115,6 +115,12 @@ In the SpoolHub web interface:
 4. Load the spools and use **Profile** to enter material-specific values where needed.
 5. Select a spool directly from the dropdown on the appropriate toolhead.
 
+### Offline management
+
+A printer can be used as a purely administrative spool location without installing a client or connecting Moonraker. In **Settings**, add the printer, enable **Manage offline only – do not send data to the printer**, and create one toolhead entry for each physical slot (for example `AMS 1 / Slot 1` through `AMS 1 / Slot 4`). Moonraker and Mainsail URLs are not required in this mode.
+
+Assignments and their history are stored centrally as usual. SpoolHub does not query the printer, send G-code, update Moonraker's active spool, queue synchronization attempts, or push profile changes for an offline-managed printer. Existing and newly created printers remain connected printers unless this option is explicitly enabled.
+
 Spools assigned elsewhere are disabled in the dropdown. To move a spool, first select **No spool** or another spool on its current toolhead.
 
 ## Klipper client installation

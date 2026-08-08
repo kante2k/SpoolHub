@@ -9,7 +9,28 @@
   --accent: #4db6ac;
   --ok: #72d572;
   --danger: #ef6f6c;
+  --header: #202530;
+  --toolhead: #151923;
+  --cell: rgba(255, 255, 255, 0.025);
+  --cell-line: rgba(255, 255, 255, 0.07);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f5f7;
+  --panel: #ffffff;
+  --panel-2: #eef2f4;
+  --line: #c8d1d8;
+  --text: #172027;
+  --muted: #53636e;
+  --accent: #178c80;
+  --ok: #287f36;
+  --danger: #c33e3b;
+  --header: #e8efef;
+  --toolhead: #f7f9fa;
+  --cell: #ffffff;
+  --cell-line: #d5dde2;
 }
 
 * {
@@ -23,7 +44,8 @@ body {
   color: var(--text);
 }
 
-button {
+button,
+input {
   min-width: 38px;
   height: 38px;
   border: 1px solid var(--line);
@@ -32,6 +54,11 @@ button {
   color: var(--text);
   font: inherit;
   cursor: pointer;
+}
+
+input {
+  padding: 0 10px;
+  cursor: text;
 }
 
 button svg {
@@ -174,7 +201,7 @@ button:focus {
   gap: 12px;
   padding: 12px;
   border-bottom: 1px solid var(--line);
-  background: #202530;
+  background: var(--header);
 }
 
 .printer-header h2 {
@@ -197,7 +224,7 @@ button:focus {
 
 .toolhead-card {
   padding: 12px;
-  background: #151923;
+  background: var(--toolhead);
 }
 
 .toolhead-card.empty {
@@ -229,12 +256,87 @@ button:focus {
   font-size: 1rem;
 }
 
-.spool-visual {
+.spool-icon {
   position: relative;
-  display: inline-block;
+  display: grid;
+  place-items: center;
   width: 66px;
-  height: 54px;
+  height: 58px;
+  color: var(--spool-color);
   filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.3));
+}
+
+.spool-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spool-icon .spool-icon-frame {
+  fill: none;
+  stroke: var(--muted);
+}
+
+.spool-icon .spool-icon-filament-fill {
+  fill: currentColor;
+  fill-opacity: 0.72;
+  stroke: none;
+}
+
+.spool-icon .spool-icon-filament-lines,
+.spool-icon .spool-icon-filament-end {
+  fill: none;
+  stroke: currentColor;
+}
+
+.spool-icon .spool-icon-filament-lines {
+  stroke: color-mix(in srgb, currentColor 72%, white);
+  stroke-width: 1.5;
+}
+
+.spool-icon .spool-icon-filament-tip {
+  fill: currentColor;
+  stroke: none;
+}
+
+.spool-icon > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  transform: translate(-50%, -50%);
+  color: var(--text);
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  text-align: center;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+  white-space: normal;
+  pointer-events: none;
+}
+
+:root[data-theme="light"] .spool-icon {
+  filter: drop-shadow(0 1px 1px rgba(23, 32, 39, 0.22));
+}
+
+:root[data-theme="light"] .spool-icon .spool-icon-frame {
+  stroke: #34424b;
+  stroke-width: 3.5;
+}
+
+:root[data-theme="light"] .spool-icon > span {
+  color: #ffffff;
+  text-shadow:
+    -1px -1px 0 #172027,
+    1px -1px 0 #172027,
+    -1px 1px 0 #172027,
+    1px 1px 0 #172027,
+    0 1px 3px #172027;
 }
 
 .spool-flange,
@@ -280,29 +382,30 @@ button:focus {
 }
 
 .profile-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(100px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .profile-cell {
-  min-height: 56px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.025);
+  min-width: 0;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border: 1px solid var(--cell-line);
+  border-radius: 999px;
+  background: var(--cell);
+  white-space: nowrap;
 }
 
 .profile-cell span {
-  display: block;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
 }
 
 .profile-cell strong {
-  display: block;
-  margin-top: 3px;
-  font-size: 0.95rem;
+  font-size: 0.84rem;
 }
 
 .profile-cell.muted strong {
@@ -397,8 +500,7 @@ button:focus {
     padding: 10px;
   }
 
-  .printer-grid,
-  .profile-grid {
+  .printer-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,4 +1,4 @@
-import { applyTranslations, setLanguage, t } from "./i18n.js?v=7";
+import { applyTranslations, setLanguage, t } from "./i18n.js?v=9";
 
 const state = {
   config: null,
@@ -18,6 +18,19 @@ const elements = {
   refreshButton: $("#refreshButton"),
   printerTemplate: $("#printerTemplate")
 };
+
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(theme = "system") {
+  const preference = ["system", "light", "dark"].includes(theme) ? theme : "system";
+  const resolved = preference === "system" ? (systemTheme.matches ? "dark" : "light") : preference;
+  document.documentElement.dataset.theme = resolved;
+  window.localStorage.setItem("spoolhub-theme", resolved);
+}
+
+systemTheme.addEventListener("change", () => {
+  if ((state.config?.theme || "system") === "system") applyTheme("system");
+});
 
 function localUrl(path) {
   return new URL(String(path).replace(/^\/+/, ""), new URL(".", window.location.href)).toString();
@@ -61,11 +74,12 @@ function spoolUsage(spool) {
 
 function spoolVisual(spool) {
   const usage = spoolUsage(spool);
-  const material = String(spool.material || "FIL").trim().slice(0, 4).toUpperCase();
+  const material = String(spool.material || "FIL").trim().toUpperCase();
   return `
-    <span class="spool-visual" style="--spool-color:${escapeHtml(spool.color || "#49b6a8")};--spool-level:${usage.percent ?? 100}%"
+    <span class="spool-icon" style="--spool-color:${escapeHtml(spool.color || "#49b6a8")}"
       role="img" aria-label="${escapeHtml(`${spool.name}: ${usage.label}`)}">
-      <span class="spool-flange"></span><span class="spool-filament"></span><span class="spool-hub">${escapeHtml(material)}</span>
+      <svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 15h40v39H25Z" class="spool-icon-filament-fill"/><path d="M29 17v35m6-35v35m6-35v35m6-35v35m6-35v35m6-35v35" class="spool-icon-filament-lines"/><path d="M25 15h40M25 54h40M19 8c-4 0-6 12-6 27s2 27 6 27 6-12 6-27S23 8 19 8Zm52 0c-4 0-6 12-6 27s2 27 6 27 6-12 6-27-2-27-6-27Z" class="spool-icon-frame"/><path d="M29 54v5c0 5 4 7 10 7" class="spool-icon-filament-end"/><circle cx="40" cy="66" r="1.8" class="spool-icon-filament-tip"/></svg>
+      <span>${escapeHtml(material)}</span>
     </span>
   `;
 }
@@ -76,9 +90,9 @@ function materialLabel(spool) {
 
 function profileRows(profile = {}) {
   return [
-    [t("profile.pressureAdvance"), profile.pressureAdvance],
-    [t("profile.retractLength"), profile.retractLength === null || profile.retractLength === undefined ? null : `${profile.retractLength} mm`],
-    [t("profile.retractSpeed"), profile.retractSpeed === null || profile.retractSpeed === undefined ? null : `${profile.retractSpeed} mm/s`],
+    [t("profile.pressureAdvanceShort"), profile.pressureAdvance],
+    [t("profile.retractLengthShort"), profile.retractLength === null || profile.retractLength === undefined ? null : `${profile.retractLength} mm`],
+    [t("profile.retractSpeedShort"), profile.retractSpeed === null || profile.retractSpeed === undefined ? null : `${profile.retractSpeed} mm/s`],
     [t("profile.nozzleShort"), profile.nozzleTemperature ? `${profile.nozzleTemperature} C` : null],
     [t("profile.bedShort"), profile.bedTemperature ? `${profile.bedTemperature} C` : null],
     [t("profile.chamberShort"), profile.chamberTemperature ? `${profile.chamberTemperature} C` : null],
@@ -256,6 +270,7 @@ async function loadPanel() {
       api("/api/spoolman/spools")
     ]);
     state.config = config;
+    applyTheme(config.theme);
     setLanguage(config.language);
     applyTranslations();
     state.assignments = assignments;

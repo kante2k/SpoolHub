@@ -1,4 +1,4 @@
-import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=8";
+import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=9";
 
 const state = {
   config: null,

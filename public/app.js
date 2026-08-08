@@ -31,9 +31,9 @@ const elements = {
   settingsDialog: $("#settingsDialog"),
   connectionState: $("#connectionState"),
   languageInput: $("#languageInput"),
+  themeInput: $("#themeInput"),
   spoolmanUrlInput: $("#spoolmanUrlInput"),
   syncLocationInput: $("#syncLocationInput"),
-  spoolIconStyleInput: $("#spoolIconStyleInput"),
   spoolGroupingInput: $("#spoolGroupingInput"),
   printerEditor: $("#printerEditor"),
   addPrinterButton: $("#addPrinterButton"),
@@ -50,6 +50,20 @@ const elements = {
   profilePartCoolingFanSpeed: $("#profilePartCoolingFanSpeed"),
   saveSpoolProfileButton: $("#saveSpoolProfileButton")
 };
+
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(theme = "system") {
+  const preference = ["system", "light", "dark"].includes(theme) ? theme : "system";
+  const resolved = preference === "system" ? (systemTheme.matches ? "dark" : "light") : preference;
+  document.documentElement.dataset.theme = resolved;
+  window.localStorage.setItem("spoolhub-theme", resolved);
+  return preference;
+}
+
+systemTheme.addEventListener("change", () => {
+  if ((state.config?.theme || "system") === "system") applyTheme("system");
+});
 
 function renderLanguageOptions(selectedLanguage) {
   elements.languageInput.innerHTML = availableLanguages()
@@ -130,7 +144,7 @@ function spoolUsage(spool) {
 function spoolVisual(spool, compact = false) {
   const usage = spoolUsage(spool);
   const material = String(spool.material || "FIL").trim().toUpperCase();
-  const style = state.config?.spoolIconStyle || "contour";
+  const style = "contour";
   const icons = {
     contour: `<svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 15h40v39H25Z" class="spool-icon-filament-fill"/><path d="M29 17v35m6-35v35m6-35v35m6-35v35m6-35v35m6-35v35" class="spool-icon-filament-lines"/><path d="M25 15h40M25 54h40M19 8c-4 0-6 12-6 27s2 27 6 27 6-12 6-27S23 8 19 8Zm52 0c-4 0-6 12-6 27s2 27 6 27 6-12 6-27-2-27-6-27Z" class="spool-icon-frame"/><path d="M29 54v5c0 5 4 7 10 7" class="spool-icon-filament-end"/><circle cx="40" cy="66" r="1.8" class="spool-icon-filament-tip"/></svg>`,
     solid: `<svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 8h34c13 0 23 12 23 27S72 62 59 62H25v-9c7 0 12-8 12-18S32 17 25 17V8Z" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="18" ry="27" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="6" ry="9" class="spool-icon-hole"/></svg>`,
@@ -583,6 +597,7 @@ async function loadAll() {
     state.assignments = assignments;
     state.spools = spools;
     state.history = history;
+    state.config.theme = applyTheme(config.theme);
     activateLanguage(config.language);
     setConnectionState(t("status.spoolCount", { count: spools.length }), "ok");
     render();
@@ -650,7 +665,7 @@ function openSettings() {
   renderLanguageOptions(state.config?.language || "en");
   elements.spoolmanUrlInput.value = state.config?.spoolmanUrl || "";
   elements.syncLocationInput.checked = Boolean(state.config?.syncSpoolLocation);
-  elements.spoolIconStyleInput.value = state.config?.spoolIconStyle || "contour";
+  elements.themeInput.value = state.config?.theme || "system";
   state.selectedSettingsPrinterId = null;
   renderPrinterEditor(structuredClone((state.config?.printers || []).map((printer) => ({
     ...printer,
@@ -824,9 +839,11 @@ elements.languageInput.addEventListener("change", (event) => {
   renderPrinterEditor(printers);
   render();
 });
+elements.themeInput.addEventListener("change", (event) => applyTheme(event.target.value));
 elements.settingsDialog.addEventListener("close", () => {
   if (elements.settingsDialog.returnValue === "cancel") {
     activateLanguage(state.config?.language || "en");
+    applyTheme(state.config?.theme || "system");
     render();
   }
 });
@@ -877,7 +894,7 @@ elements.saveSettingsButton.addEventListener("click", async (event) => {
   const config = {
     spoolmanUrl: elements.spoolmanUrlInput.value.trim().replace(/\/+$/, ""),
     syncSpoolLocation: elements.syncLocationInput.checked,
-    spoolIconStyle: elements.spoolIconStyleInput.value,
+    theme: elements.themeInput.value,
     spoolGrouping: state.config?.spoolGrouping || "material",
     language: normalizeLanguage(elements.languageInput.value),
     printers: readEditorModel()

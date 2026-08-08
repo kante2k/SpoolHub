@@ -128,6 +128,7 @@ class ManagedOfflinePrinterTests(unittest.TestCase):
         self.assertEqual(printer["mainsailUrl"], "")
         self.assertEqual(printer["iconType"], "enclosed")
         self.assertEqual(config["spoolIconStyle"], "contour")
+        self.assertEqual(config["theme"], "system")
 
     @patch("spoolhub.sync_active_spool_after_assignment")
     @patch("spoolhub.push_local_spool_state")

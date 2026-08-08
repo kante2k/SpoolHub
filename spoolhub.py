@@ -117,6 +117,7 @@ def init_db() -> None:
         set_default(conn, "sync_spool_location", "false")
         set_default(conn, "language", "en")
         set_default(conn, "spool_icon_style", "contour")
+        set_default(conn, "theme", "system")
         set_default(conn, "spool_grouping", "material")
         if conn.execute("SELECT COUNT(*) FROM printers").fetchone()[0] == 0:
             seed_printers(conn)
@@ -485,6 +486,7 @@ def get_config(conn: sqlite3.Connection) -> dict:
         "syncSpoolLocation": bool_setting(conn, "sync_spool_location"),
         "language": setting(conn, "language", "en"),
         "spoolIconStyle": setting(conn, "spool_icon_style", "contour"),
+        "theme": setting(conn, "theme", "system"),
         "spoolGrouping": setting(conn, "spool_grouping", "material"),
         "printers": printers,
     }
@@ -907,6 +909,13 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute(
                         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                         ("spool_icon_style", spool_icon_style),
+                    )
+                    theme = body.get("theme")
+                    if theme not in {"system", "light", "dark"}:
+                        theme = "system"
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        ("theme", theme),
                     )
                     spool_grouping = body.get("spoolGrouping")
                     if spool_grouping not in {"material", "vendor"}:

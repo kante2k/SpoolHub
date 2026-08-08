@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SpoolHub</title>
-    <link rel="stylesheet" href="styles.css?v=22" />
+    <script>document.documentElement.dataset.theme = localStorage.getItem("spoolhub-theme") === "light" ? "light" : "dark";</script>
+    <link rel="stylesheet" href="styles.css?v=24" />
   </head>
   <body>
     <div class="shell">
@@ -88,6 +89,15 @@
         </label>
 
         <label>
+          <span data-i18n="settings.theme">Design</span>
+          <select id="themeInput">
+            <option value="system" data-i18n="theme.system">Systemeinstellung</option>
+            <option value="light" data-i18n="theme.light">Hell</option>
+            <option value="dark" data-i18n="theme.dark">Dunkel</option>
+          </select>
+        </label>
+
+        <label>
           <span data-i18n="settings.spoolmanUrl">Spoolman-URL</span>
           <input id="spoolmanUrlInput" type="url" required />
         </label>
@@ -95,15 +105,6 @@
         <label class="checkbox-line">
           <input id="syncLocationInput" type="checkbox" />
           <span data-i18n="settings.syncLocation">Spoolman-Standort beim Zuweisen aktualisieren</span>
-        </label>
-
-        <label>
-          <span data-i18n="settings.spoolIconStyle">Spulensymbol</span>
-          <select id="spoolIconStyleInput">
-            <option value="contour" data-i18n="icons.spoolContour">Kontur</option>
-            <option value="solid" data-i18n="icons.spoolSolid">Flächig</option>
-            <option value="technical" data-i18n="icons.spoolTechnical">Technisch</option>
-          </select>
         </label>
 
         <div class="settings-toolbar">
@@ -185,6 +186,6 @@
       </article>
     </template>
 
-    <script src="app.js?v=31" type="module"></script>
+    <script src="app.js?v=33" type="module"></script>
   </body>
 </html>

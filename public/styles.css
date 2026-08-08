@@ -172,13 +172,18 @@ select {
 
 .spool-heading-actions input {
   width: auto;
-  min-width: 180px;
-  flex: 1 1 240px;
+  min-width: min(260px, 100%);
+  flex: 1 1 260px;
 }
 
 .spools-panel .panel-heading {
   flex-wrap: wrap;
   align-items: flex-start;
+}
+
+.spools-panel .spool-heading-actions {
+  width: 100%;
+  flex-basis: 100%;
 }
 
 .status-chip {
@@ -472,6 +477,11 @@ select {
   border-bottom: 0;
 }
 
+.extruder-row.spool-drop-target {
+  background: rgba(73, 182, 168, 0.12);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .extruder-name {
   font-weight: 700;
 }
@@ -482,6 +492,10 @@ select {
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 10px;
   align-items: center;
+}
+
+.assigned-spool > * {
+  min-width: 0;
 }
 
 .assigned-spool strong,
@@ -501,6 +515,12 @@ select {
 
 .assigned-spool > span:last-child {
   grid-column: 2;
+}
+
+.assigned-profile-summary {
+  grid-column: 2;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .assignment-select-label {
@@ -581,6 +601,23 @@ select {
   gap: 12px;
   padding: 12px;
   text-align: left;
+  cursor: grab;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.spool-card:active {
+  cursor: grabbing;
+}
+
+.spool-card.spool-dragging {
+  opacity: 0.45;
+  transform: scale(0.99);
+}
+
+.spool-card button,
+.spool-card input,
+.spool-card select {
+  cursor: pointer;
 }
 
 .history-item {

@@ -241,10 +241,11 @@ function renderToolheadAssignment(printer, toolhead) {
   const options = [`<option value="">${escapeHtml(t("spool.none"))}</option>`, ...choices.map((choice) => `<option value="${escapeHtml(choice.id)}"${String(choice.id) === String(currentSpoolId) ? " selected" : ""}${choice.disabled ? " disabled" : ""}>${escapeHtml(choice.label)}</option>`)].join("");
   const menuOptions = [`<button type="button" class="spool-combobox-option" data-value="">${escapeHtml(t("spool.none"))}</button>`, ...choices.map((choice) => `<button type="button" class="spool-combobox-option" data-value="${escapeHtml(choice.id)}"${choice.disabled ? " disabled" : ""}>${escapeHtml(choice.label)}</button>`)].join("");
   const selectedLabel = choices.find((choice) => String(choice.id) === String(currentSpoolId))?.label || t("spool.none");
-  return `<div class="extruder-row" data-printer-id="${escapeHtml(printer.id)}" data-toolhead-id="${escapeHtml(toolhead.id)}"><div class="extruder-name">${escapeHtml(toolhead.name)}</div><div class="assigned-spool">${spool ? spoolVisual(spool, true) : ""}<label class="assignment-select-label"><span>${escapeHtml(t("spool.assignment"))}</span><div class="spool-combobox"><input class="spool-combobox-input" type="text" value="${escapeHtml(selectedLabel)}" autocomplete="off" role="combobox" aria-expanded="false"><select class="assignment-select" tabindex="-1" aria-hidden="true">${options}</select><div class="spool-combobox-menu" role="listbox" hidden>${menuOptions}</div></div></label>${spool ? `<span>${escapeHtml(profileLabel(spool.profile))}</span>` : ""}${spool && assignment?.syncPending ? `<span class="assignment-owner">${escapeHtml(t("status.syncPending"))}</span>` : ""}</div></div>`;
+  return `<div class="extruder-row" data-printer-id="${escapeHtml(printer.id)}" data-toolhead-id="${escapeHtml(toolhead.id)}"><div class="extruder-name">${escapeHtml(toolhead.name)}</div><div class="assigned-spool">${spool ? spoolVisual(spool, true) : ""}<label class="assignment-select-label"><span>${escapeHtml(t("spool.assignment"))}</span><div class="spool-combobox"><input class="spool-combobox-input" type="text" value="${escapeHtml(selectedLabel)}" autocomplete="off" role="combobox" aria-expanded="false"><select class="assignment-select" tabindex="-1" aria-hidden="true">${options}</select><div class="spool-combobox-menu" role="listbox" hidden>${menuOptions}</div></div></label>${spool ? `<span class="assigned-profile-summary">${escapeHtml(profileLabel(spool.profile))}</span>` : ""}${spool && assignment?.syncPending ? `<span class="assignment-owner">${escapeHtml(t("status.syncPending"))}</span>` : ""}</div></div>`;
 }
 
 function bindSelectedPrinterAssignments() {
+  bindSpoolDropTargets();
   $$(".spool-combobox-input", elements.selectedPrinterDetails).forEach((input) => {
     const combobox = input.closest(".spool-combobox");
     const menu = $(".spool-combobox-menu", combobox);
@@ -265,6 +266,39 @@ function bindSelectedPrinterAssignments() {
     catch (error) { console.error(error); select.value = String(previousValue); setConnectionState(error.message, "error"); }
     finally { select.disabled = false; }
   }));
+}
+
+function bindSpoolDropTargets() {
+  $$(".extruder-row", elements.selectedPrinterDetails).forEach((row) => {
+    const clearDropState = () => row.classList.remove("spool-drop-target");
+    row.addEventListener("dragenter", (event) => {
+      if (!event.dataTransfer.types.includes("application/x-spoolhub-spool")) return;
+      event.preventDefault();
+      row.classList.add("spool-drop-target");
+    });
+    row.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer.types.includes("application/x-spoolhub-spool")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    row.addEventListener("dragleave", (event) => {
+      if (!row.contains(event.relatedTarget)) clearDropState();
+    });
+    row.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      clearDropState();
+      const spoolId = event.dataTransfer.getData("application/x-spoolhub-spool");
+      if (!spoolId) return;
+      try {
+        const printer = state.config?.printers?.find((item) => item.id === row.dataset.printerId);
+        setConnectionState(t(printer?.connectionMode === "managed" ? "status.saving" : "status.assigning"), "");
+        await assignSpool(spoolId, row.dataset.printerId, row.dataset.toolheadId);
+      } catch (error) {
+        console.error(error);
+        setConnectionState(error.message, "error");
+      }
+    });
+  });
 }
 
 function renderPrintersLegacy() {
@@ -417,7 +451,7 @@ function renderPrintersLegacy() {
 function renderSpoolCard(spool) {
   const owners = assignmentOwners(spool.id);
   const ownerLabel = owners.length ? `<span class="assignment-owner">${escapeHtml(owners.map((owner) => t("spool.assignedTo", { printer: owner.printerName, toolhead: owner.toolheadName })).join("; "))}</span>` : "";
-  return `<article class="spool-card" data-spool-id="${escapeHtml(spool.id)}">${spoolVisual(spool)}<span><strong>${escapeHtml(spool.name)}</strong><span class="spool-meta"><span>${escapeHtml(materialLabel(spool))}</span><span>${escapeHtml(t("spool.remaining", { weight: formatWeight(spool.remainingWeight) }))}</span><span>${escapeHtml(spoolUsage(spool).label)}</span>${spool.location ? `<span>${escapeHtml(spool.location)}</span>` : ""}<span>${escapeHtml(profileLabel(spool.profile))}</span>${ownerLabel}</span><span class="spool-actions"><button data-action="edit-spool-profile">${escapeHtml(t("actions.profile"))}</button></span></span></article>`;
+  return `<article class="spool-card" data-spool-id="${escapeHtml(spool.id)}" draggable="true" title="${escapeHtml(t("spool.dragToSlot"))}">${spoolVisual(spool)}<span><strong>${escapeHtml(spool.name)}</strong><span class="spool-meta"><span>${escapeHtml(materialLabel(spool))}</span><span>${escapeHtml(t("spool.remaining", { weight: formatWeight(spool.remainingWeight) }))}</span><span>${escapeHtml(spoolUsage(spool).label)}</span>${spool.location ? `<span>${escapeHtml(spool.location)}</span>` : ""}<span>${escapeHtml(profileLabel(spool.profile))}</span>${ownerLabel}</span><span class="spool-actions"><button data-action="edit-spool-profile">${escapeHtml(t("actions.profile"))}</button></span></span></article>`;
 }
 
 function renderSpools() {
@@ -447,6 +481,18 @@ function renderSpools() {
     const spool = state.spools.find((item) => String(item.id) === String(button.closest(".spool-card").dataset.spoolId));
     openSpoolProfile(spool);
   }));
+  $$(".spool-card", elements.spoolList).forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-spoolhub-spool", card.dataset.spoolId);
+      event.dataTransfer.setData("text/plain", card.dataset.spoolId);
+      card.classList.add("spool-dragging");
+    });
+    card.addEventListener("dragend", () => {
+      card.classList.remove("spool-dragging");
+      $$(".spool-drop-target", elements.selectedPrinterDetails).forEach((row) => row.classList.remove("spool-drop-target"));
+    });
+  });
 }
 
 function renderSpoolsLegacy() {

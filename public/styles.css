@@ -401,6 +401,33 @@ select {
   stroke: none;
 }
 
+.spool-icon .spool-icon-frame {
+  fill: none;
+  stroke: var(--muted);
+}
+
+.spool-icon .spool-icon-filament-fill {
+  fill: currentColor;
+  fill-opacity: 0.72;
+  stroke: none;
+}
+
+.spool-icon .spool-icon-filament-lines,
+.spool-icon .spool-icon-filament-end {
+  fill: none;
+  stroke: currentColor;
+}
+
+.spool-icon .spool-icon-filament-lines {
+  stroke: color-mix(in srgb, currentColor 72%, white);
+  stroke-width: 1.5;
+}
+
+.spool-icon .spool-icon-filament-tip {
+  fill: currentColor;
+  stroke: none;
+}
+
 .spool-icon .spool-icon-solid {
   fill: currentColor;
   stroke: none;
@@ -413,18 +440,26 @@ select {
 
 .spool-icon > span {
   position: absolute;
-  left: 7px;
-  width: 36px;
+  left: 50%;
+  top: 50%;
+  width: 38px;
+  transform: translate(-50%, -50%);
   color: var(--text);
   font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.05;
   text-align: center;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+  overflow-wrap: anywhere;
+  white-space: normal;
   pointer-events: none;
 }
 
 .spool-icon.compact > span {
-  left: 2px;
-  width: 26px;
+  left: 50%;
+  width: 28px;
   font-size: 0.52rem;
+  line-height: 1.05;
 }
 
 .printer-card,

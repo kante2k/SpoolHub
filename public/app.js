@@ -129,10 +129,10 @@ function spoolUsage(spool) {
 
 function spoolVisual(spool, compact = false) {
   const usage = spoolUsage(spool);
-  const material = String(spool.material || "FIL").trim().slice(0, 4).toUpperCase();
+  const material = String(spool.material || "FIL").trim().toUpperCase();
   const style = state.config?.spoolIconStyle || "contour";
   const icons = {
-    contour: `<svg viewBox="0 0 90 70" aria-hidden="true"><ellipse cx="25" cy="35" rx="18" ry="27" class="spool-icon-tint"/><path d="M25 8h34c13 0 23 12 23 27S72 62 59 62H25" class="spool-icon-soft"/><ellipse cx="25" cy="35" rx="18" ry="27"/><ellipse cx="25" cy="35" rx="6" ry="9"/><path d="M25 14h33c10 0 18 9 18 21s-8 21-18 21H25M58 18v34"/></svg>`,
+    contour: `<svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 15h40v39H25Z" class="spool-icon-filament-fill"/><path d="M29 17v35m6-35v35m6-35v35m6-35v35m6-35v35m6-35v35" class="spool-icon-filament-lines"/><path d="M25 15h40M25 54h40M19 8c-4 0-6 12-6 27s2 27 6 27 6-12 6-27S23 8 19 8Zm52 0c-4 0-6 12-6 27s2 27 6 27 6-12 6-27-2-27-6-27Z" class="spool-icon-frame"/><path d="M29 54v5c0 5 4 7 10 7" class="spool-icon-filament-end"/><circle cx="40" cy="66" r="1.8" class="spool-icon-filament-tip"/></svg>`,
     solid: `<svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 8h34c13 0 23 12 23 27S72 62 59 62H25v-9c7 0 12-8 12-18S32 17 25 17V8Z" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="18" ry="27" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="6" ry="9" class="spool-icon-hole"/></svg>`,
     technical: `<svg viewBox="0 0 90 70" aria-hidden="true"><circle cx="32" cy="35" r="27"/><circle cx="32" cy="35" r="9"/><path d="M59 15h12c7 0 12 9 12 20S78 55 71 55H59M70 20v30M13 20l13 8m19-8-7 11m7 19-13-8M19 52l7-11"/></svg>`
   };

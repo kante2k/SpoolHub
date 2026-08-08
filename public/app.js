@@ -1,4 +1,4 @@
-import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=7";
+import { applyTranslations, availableLanguages, normalizeLanguage, setLanguage, t } from "./i18n.js?v=8";
 
 const state = {
   config: null,
@@ -6,7 +6,9 @@ const state = {
   assignments: {},
   history: [],
   query: "",
-  historyVisible: false
+  historyVisible: false,
+  selectedPrinterId: null,
+  selectedSettingsPrinterId: null
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -14,6 +16,11 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 
 const elements = {
   printerList: $("#printerList"),
+  selectedPrinterPanel: $("#selectedPrinterPanel"),
+  selectedPrinterName: $("#selectedPrinterName"),
+  selectedPrinterMode: $("#selectedPrinterMode"),
+  selectedPrinterDetails: $("#selectedPrinterDetails"),
+  spoolsPanel: $("#spoolsPanel"),
   spoolList: $("#spoolList"),
   historyPanel: $("#historyPanel"),
   historyList: $("#historyList"),
@@ -26,6 +33,8 @@ const elements = {
   languageInput: $("#languageInput"),
   spoolmanUrlInput: $("#spoolmanUrlInput"),
   syncLocationInput: $("#syncLocationInput"),
+  spoolIconStyleInput: $("#spoolIconStyleInput"),
+  spoolGroupingInput: $("#spoolGroupingInput"),
   printerEditor: $("#printerEditor"),
   addPrinterButton: $("#addPrinterButton"),
   saveSettingsButton: $("#saveSettingsButton"),
@@ -120,16 +129,14 @@ function spoolUsage(spool) {
 
 function spoolVisual(spool, compact = false) {
   const usage = spoolUsage(spool);
-  const level = usage.percent === null ? 100 : usage.percent;
   const material = String(spool.material || "FIL").trim().slice(0, 4).toUpperCase();
-  return `
-    <span class="spool-visual${compact ? " compact" : ""}" style="--spool-color:${escapeHtml(spool.color || "#49b6a8")};--spool-level:${level}%"
-      role="img" aria-label="${escapeHtml(`${spool.name}: ${usage.label}`)}">
-      <span class="spool-flange"></span>
-      <span class="spool-filament"></span>
-      <span class="spool-hub">${escapeHtml(material)}</span>
-    </span>
-  `;
+  const style = state.config?.spoolIconStyle || "contour";
+  const icons = {
+    contour: `<svg viewBox="0 0 90 70" aria-hidden="true"><ellipse cx="25" cy="35" rx="18" ry="27" class="spool-icon-tint"/><path d="M25 8h34c13 0 23 12 23 27S72 62 59 62H25" class="spool-icon-soft"/><ellipse cx="25" cy="35" rx="18" ry="27"/><ellipse cx="25" cy="35" rx="6" ry="9"/><path d="M25 14h33c10 0 18 9 18 21s-8 21-18 21H25M58 18v34"/></svg>`,
+    solid: `<svg viewBox="0 0 90 70" aria-hidden="true"><path d="M25 8h34c13 0 23 12 23 27S72 62 59 62H25v-9c7 0 12-8 12-18S32 17 25 17V8Z" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="18" ry="27" class="spool-icon-solid"/><ellipse cx="25" cy="35" rx="6" ry="9" class="spool-icon-hole"/></svg>`,
+    technical: `<svg viewBox="0 0 90 70" aria-hidden="true"><circle cx="32" cy="35" r="27"/><circle cx="32" cy="35" r="9"/><path d="M59 15h12c7 0 12 9 12 20S78 55 71 55H59M70 20v30M13 20l13 8m19-8-7 11m7 19-13-8M19 52l7-11"/></svg>`
+  };
+  return `<span class="spool-icon${compact ? " compact" : ""}" style="--spool-color:${escapeHtml(spool.color || "#49b6a8")}" role="img" aria-label="${escapeHtml(`${spool.name}: ${usage.label}`)}">${icons[style] || icons.contour}<span>${escapeHtml(material)}</span></span>`;
 }
 
 function materialLabel(spool) {
@@ -184,7 +191,83 @@ function renderHistoryVisibility() {
   elements.historyToggleButton.setAttribute("aria-expanded", String(state.historyVisible));
 }
 
+function printerIconSvg(iconType) {
+  const icons = {
+    enclosed: `<svg viewBox="0 0 100 120" aria-hidden="true"><rect x="16" y="7" width="68" height="106" rx="7" class="printer-icon-fill"/><rect x="23" y="15" width="54" height="76" rx="2"/><path d="M29 25h42M37 25v15h26V25M50 40v10m-11 0h22l5 15H34l5-15"/><rect x="35" y="98" width="30" height="7" rx="2" class="printer-icon-solid"/></svg>`,
+    corexy: `<svg viewBox="0 0 100 120" aria-hidden="true"><path d="M12 108V18h70v90M12 27h70M22 37h50M27 37v20h40V37M47 57v11m-13 0h26l6 17H28l6-17M82 40h8v42h-8"/></svg>`,
+    bedslinger: `<svg viewBox="0 0 100 120" aria-hidden="true"><path d="M16 103V25h67M24 34h51M29 34v20h40V34M49 54v13M20 92h66M35 76h33l7 16H28l7-16M83 21v75"/></svg>`
+  };
+  return `<span class="printer-icon">${icons[iconType] || icons.corexy}</span>`;
+}
+
 function renderPrinters() {
+  const printers = state.config?.printers || [];
+  if (!printers.length) {
+    elements.printerList.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.noPrinters"))}</div>`;
+    elements.selectedPrinterPanel.hidden = true;
+    elements.spoolsPanel.hidden = true;
+    return;
+  }
+  if (state.selectedPrinterId && !printers.some((printer) => printer.id === state.selectedPrinterId)) state.selectedPrinterId = null;
+  elements.printerList.innerHTML = printers.map((printer) => {
+    const toolheads = printer.toolheads || printer.extruders || [];
+    const assignedCount = toolheads.filter((toolhead) => getAssignedSpool(printer.id, toolhead.id)).length;
+    return `<button type="button" class="printer-tile${printer.id === state.selectedPrinterId ? " selected" : ""}" data-printer-id="${escapeHtml(printer.id)}">${printerIconSvg(printer.iconType || "corexy")}<span class="printer-tile-copy"><span class="printer-tile-title"><strong>${escapeHtml(printer.name)}</strong></span><span class="printer-tile-meta">${escapeHtml(t("printer.toolheadCount", { count: toolheads.length }))}</span><span>${escapeHtml(t("printer.assignedCount", { assigned: assignedCount, count: toolheads.length }))}</span><span class="printer-mode">${escapeHtml(printer.connectionMode === "managed" ? t("printer.managedOffline") : t("printer.connected"))}</span></span></button>`;
+  }).join("");
+  $$(".printer-tile", elements.printerList).forEach((tile) => tile.addEventListener("click", () => {
+    state.selectedPrinterId = state.selectedPrinterId === tile.dataset.printerId ? null : tile.dataset.printerId;
+    renderPrinters();
+    renderSpools();
+  }));
+  const printer = printers.find((item) => item.id === state.selectedPrinterId);
+  elements.selectedPrinterPanel.hidden = !printer;
+  elements.spoolsPanel.hidden = !printer;
+  if (!printer) {
+    elements.selectedPrinterDetails.innerHTML = "";
+    return;
+  }
+  elements.selectedPrinterName.textContent = printer.name;
+  elements.selectedPrinterMode.textContent = printer.connectionMode === "managed" ? t("printer.managedOffline") : t("printer.connected");
+  const toolheads = printer.toolheads || printer.extruders || [];
+  elements.selectedPrinterDetails.innerHTML = toolheads.map((toolhead) => renderToolheadAssignment(printer, toolhead)).join("") || `<div class="empty-state">${escapeHtml(t("empty.noToolheads"))}</div>`;
+  bindSelectedPrinterAssignments();
+}
+
+function renderToolheadAssignment(printer, toolhead) {
+  const spool = getAssignedSpool(printer.id, toolhead.id);
+  const assignment = state.assignments?.[printer.id]?.[toolhead.id];
+  const currentSpoolId = spool?.id ?? "";
+  const choices = state.spools.map((candidate) => ({ id: candidate.id, disabled: assignmentOwners(candidate.id).some((owner) => owner.printerId !== printer.id || owner.toolheadId !== toolhead.id), label: `${candidate.name} · ${materialLabel(candidate)} · ${formatWeight(candidate.remainingWeight)}` }));
+  const options = [`<option value="">${escapeHtml(t("spool.none"))}</option>`, ...choices.map((choice) => `<option value="${escapeHtml(choice.id)}"${String(choice.id) === String(currentSpoolId) ? " selected" : ""}${choice.disabled ? " disabled" : ""}>${escapeHtml(choice.label)}</option>`)].join("");
+  const menuOptions = [`<button type="button" class="spool-combobox-option" data-value="">${escapeHtml(t("spool.none"))}</button>`, ...choices.map((choice) => `<button type="button" class="spool-combobox-option" data-value="${escapeHtml(choice.id)}"${choice.disabled ? " disabled" : ""}>${escapeHtml(choice.label)}</button>`)].join("");
+  const selectedLabel = choices.find((choice) => String(choice.id) === String(currentSpoolId))?.label || t("spool.none");
+  return `<div class="extruder-row" data-printer-id="${escapeHtml(printer.id)}" data-toolhead-id="${escapeHtml(toolhead.id)}"><div class="extruder-name">${escapeHtml(toolhead.name)}</div><div class="assigned-spool">${spool ? spoolVisual(spool, true) : ""}<label class="assignment-select-label"><span>${escapeHtml(t("spool.assignment"))}</span><div class="spool-combobox"><input class="spool-combobox-input" type="text" value="${escapeHtml(selectedLabel)}" autocomplete="off" role="combobox" aria-expanded="false"><select class="assignment-select" tabindex="-1" aria-hidden="true">${options}</select><div class="spool-combobox-menu" role="listbox" hidden>${menuOptions}</div></div></label>${spool ? `<span>${escapeHtml(profileLabel(spool.profile))}</span>` : ""}${spool && assignment?.syncPending ? `<span class="assignment-owner">${escapeHtml(t("status.syncPending"))}</span>` : ""}</div></div>`;
+}
+
+function bindSelectedPrinterAssignments() {
+  $$(".spool-combobox-input", elements.selectedPrinterDetails).forEach((input) => {
+    const combobox = input.closest(".spool-combobox");
+    const menu = $(".spool-combobox-menu", combobox);
+    const select = $(".assignment-select", combobox);
+    const close = () => { menu.hidden = true; input.setAttribute("aria-expanded", "false"); input.value = select.selectedOptions[0]?.textContent || t("spool.none"); };
+    const filter = () => { const query = input.value.trim().toLocaleLowerCase(); $$(".spool-combobox-option", menu).forEach((option) => option.hidden = Boolean(query) && !option.textContent.toLocaleLowerCase().includes(query)); menu.hidden = false; input.setAttribute("aria-expanded", "true"); };
+    input.addEventListener("focus", () => { input.value = ""; filter(); });
+    input.addEventListener("input", filter);
+    input.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); if (event.key === "Enter") { const option = $$(".spool-combobox-option", menu).find((item) => !item.hidden && !item.disabled); if (option) { event.preventDefault(); option.click(); } } });
+    input.addEventListener("blur", () => setTimeout(close, 100));
+    menu.addEventListener("mousedown", (event) => event.preventDefault());
+    menu.addEventListener("click", (event) => { const option = event.target.closest(".spool-combobox-option"); if (!option || option.disabled) return; select.value = option.dataset.value; input.value = option.textContent.trim(); menu.hidden = true; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  });
+  $$(".assignment-select", elements.selectedPrinterDetails).forEach((select) => select.addEventListener("change", async () => {
+    const row = select.closest(".extruder-row");
+    const previousValue = state.assignments?.[row.dataset.printerId]?.[row.dataset.toolheadId]?.spoolId ?? "";
+    try { select.disabled = true; const printer = state.config?.printers?.find((item) => item.id === row.dataset.printerId); setConnectionState(t(printer?.connectionMode === "managed" ? "status.saving" : "status.assigning"), ""); await assignSpool(select.value, row.dataset.printerId, row.dataset.toolheadId); }
+    catch (error) { console.error(error); select.value = String(previousValue); setConnectionState(error.message, "error"); }
+    finally { select.disabled = false; }
+  }));
+}
+
+function renderPrintersLegacy() {
   if (!state.config?.printers?.length) {
     elements.printerList.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.noPrinters"))}</div>`;
     return;
@@ -331,7 +414,42 @@ function renderPrinters() {
 
 }
 
+function renderSpoolCard(spool) {
+  const owners = assignmentOwners(spool.id);
+  const ownerLabel = owners.length ? `<span class="assignment-owner">${escapeHtml(owners.map((owner) => t("spool.assignedTo", { printer: owner.printerName, toolhead: owner.toolheadName })).join("; "))}</span>` : "";
+  return `<article class="spool-card" data-spool-id="${escapeHtml(spool.id)}">${spoolVisual(spool)}<span><strong>${escapeHtml(spool.name)}</strong><span class="spool-meta"><span>${escapeHtml(materialLabel(spool))}</span><span>${escapeHtml(t("spool.remaining", { weight: formatWeight(spool.remainingWeight) }))}</span><span>${escapeHtml(spoolUsage(spool).label)}</span>${spool.location ? `<span>${escapeHtml(spool.location)}</span>` : ""}<span>${escapeHtml(profileLabel(spool.profile))}</span>${ownerLabel}</span><span class="spool-actions"><button data-action="edit-spool-profile">${escapeHtml(t("actions.profile"))}</button></span></span></article>`;
+}
+
 function renderSpools() {
+  if (!state.selectedPrinterId) {
+    elements.spoolList.innerHTML = "";
+    return;
+  }
+  const query = state.query.trim().toLowerCase();
+  const spools = state.spools.filter((spool) => {
+    const text = `${spool.name} ${spool.material} ${spool.vendor} ${spool.filamentName} ${spool.location}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+  if (!spools.length) {
+    elements.spoolList.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.noSpools"))}</div>`;
+    return;
+  }
+  const grouping = state.config?.spoolGrouping === "vendor" ? "vendor" : "material";
+  elements.spoolGroupingInput.value = grouping;
+  const groups = new Map();
+  spools.forEach((spool) => {
+    const label = String(spool[grouping] || t(grouping === "vendor" ? "spool.unknownVendor" : "spool.unknownMaterial"));
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(spool);
+  });
+  elements.spoolList.innerHTML = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([label, items]) => `<section class="spool-group"><div class="spool-group-heading"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(t("spool.groupCount", { count: items.length }))}</span></div><div class="spool-group-grid">${items.map(renderSpoolCard).join("")}</div></section>`).join("");
+  $$("[data-action='edit-spool-profile']", elements.spoolList).forEach((button) => button.addEventListener("click", () => {
+    const spool = state.spools.find((item) => String(item.id) === String(button.closest(".spool-card").dataset.spoolId));
+    openSpoolProfile(spool);
+  }));
+}
+
+function renderSpoolsLegacy() {
   const query = state.query.trim().toLowerCase();
   const spools = state.spools.filter((spool) => {
     const text = `${spool.name} ${spool.material} ${spool.vendor} ${spool.filamentName} ${spool.location}`.toLowerCase();
@@ -414,6 +532,8 @@ async function loadAll() {
       api("/api/history?limit=30")
     ]);
     state.config = config;
+    const savedGrouping = window.localStorage.getItem("spoolhub-spool-grouping");
+    if (["material", "vendor"].includes(savedGrouping)) state.config.spoolGrouping = savedGrouping;
     state.assignments = assignments;
     state.spools = spools;
     state.history = history;
@@ -484,6 +604,8 @@ function openSettings() {
   renderLanguageOptions(state.config?.language || "en");
   elements.spoolmanUrlInput.value = state.config?.spoolmanUrl || "";
   elements.syncLocationInput.checked = Boolean(state.config?.syncSpoolLocation);
+  elements.spoolIconStyleInput.value = state.config?.spoolIconStyle || "contour";
+  state.selectedSettingsPrinterId = null;
   renderPrinterEditor(structuredClone((state.config?.printers || []).map((printer) => ({
     ...printer,
     toolheads: printer.toolheads || printer.extruders || []
@@ -503,6 +625,7 @@ function renderPrinterEditor(printers) {
     $("[data-field='moonrakerUrl']", card).value = printer.moonrakerUrl || "";
     $("[data-field='mainsailUrl']", card).value = printer.mainsailUrl || "";
     $("[data-field='managed-offline']", card).checked = printer.connectionMode === "managed";
+    $("[data-field='iconType']", card).value = printer.iconType || (printer.connectionMode === "managed" ? "enclosed" : "corexy");
     const extruderEditor = $(".extruder-editor", card);
 
     (printer.toolheads || printer.extruders || []).forEach((toolhead, toolheadIndex) => {
@@ -517,7 +640,17 @@ function renderPrinterEditor(printers) {
       );
     });
 
+    $("[data-field='summary-icon']", card).innerHTML = printerIconSvg(printer.iconType || (printer.connectionMode === "managed" ? "enclosed" : "corexy"));
+    $("[data-field='summary-name']", card).textContent = printer.name || printer.id || t("actions.addPrinter");
+    $("[data-field='summary-toolheads']", card).textContent = t("printer.toolheadCount", { count: (printer.toolheads || printer.extruders || []).length });
+    $("[data-field='summary-mode']", card).textContent = printer.connectionMode === "managed" ? t("printer.managedOffline") : t("printer.connected");
+    const expanded = state.selectedSettingsPrinterId === (printer.id || `new-${printerIndex}`);
+    card.classList.toggle("expanded", expanded);
+    $("[data-action='toggle-printer-editor']", card).setAttribute("aria-expanded", String(expanded));
+
     card.dataset.printerIndex = printerIndex;
+    card.dataset.isNewPrinter = String(Boolean(printer.isNewPrinter));
+    card.dataset.lastPrinterId = printer.id || "";
     applyTranslations(template);
     elements.printerEditor.appendChild(template);
     updatePrinterEditorMode(elements.printerEditor.lastElementChild);
@@ -548,6 +681,8 @@ function readEditorModel() {
     moonrakerUrl: $("[data-field='moonrakerUrl']", card).value.trim().replace(/\/+$/, ""),
     mainsailUrl: $("[data-field='mainsailUrl']", card).value.trim().replace(/\/+$/, ""),
     connectionMode: $("[data-field='managed-offline']", card).checked ? "managed" : "connected",
+    iconType: $("[data-field='iconType']", card).value,
+    isNewPrinter: card.dataset.isNewPrinter === "true",
     toolheads: $$(".extruder-line", card).map((line, toolheadIndex) => ({
       id: $("[data-field='toolhead-id']", line).value.trim(),
       name: $("[data-field='toolhead-name']", line).value.trim(),
@@ -557,8 +692,50 @@ function readEditorModel() {
 }
 
 function bindEditorEvents() {
+  $$('[data-action="toggle-printer-editor"]', elements.printerEditor).forEach((button) => {
+    button.addEventListener("click", () => {
+      const card = button.closest(".editor-card");
+      const printerId = $("[data-field='id']", card).value.trim() || `new-${card.dataset.printerIndex}`;
+      const shouldExpand = !card.classList.contains("expanded");
+      state.selectedSettingsPrinterId = shouldExpand ? printerId : null;
+      $$(".editor-card", elements.printerEditor).forEach((item) => {
+        const expanded = shouldExpand && item === card;
+        item.classList.toggle("expanded", expanded);
+        $("[data-action='toggle-printer-editor']", item).setAttribute("aria-expanded", String(expanded));
+      });
+      if (shouldExpand) window.requestAnimationFrame(() => card.scrollIntoView({ block: "start", behavior: "smooth" }));
+    });
+  });
+  $$("[data-field='id']", elements.printerEditor).forEach((input) => {
+    input.addEventListener("input", () => {
+      const card = input.closest(".editor-card");
+      if (card.dataset.isNewPrinter !== "true") return;
+      const previousPrinterId = card.dataset.lastPrinterId || "";
+      const firstToolheadId = $(".extruder-line:first-child [data-field='toolhead-id']", card);
+      if (firstToolheadId && (!firstToolheadId.value || firstToolheadId.value === `${previousPrinterId}-t0`)) {
+        firstToolheadId.value = input.value.trim() ? `${input.value.trim()}-t0` : "";
+      }
+      card.dataset.lastPrinterId = input.value.trim();
+      if (card.classList.contains("expanded")) state.selectedSettingsPrinterId = input.value.trim() || `new-${card.dataset.printerIndex}`;
+    });
+  });
+  $$("[data-field='name']", elements.printerEditor).forEach((input) => {
+    input.addEventListener("input", () => {
+      const card = input.closest(".editor-card");
+      $("[data-field='summary-name']", card).textContent = input.value.trim() || $("[data-field='id']", card).value.trim() || t("actions.addPrinter");
+    });
+  });
+  $$("[data-field='iconType']", elements.printerEditor).forEach((select) => {
+    select.addEventListener("change", () => {
+      $("[data-field='summary-icon']", select.closest(".editor-card")).innerHTML = printerIconSvg(select.value);
+    });
+  });
   $$("[data-field='managed-offline']", elements.printerEditor).forEach((input) => {
-    input.addEventListener("change", () => updatePrinterEditorMode(input.closest(".editor-card")));
+    input.addEventListener("change", () => {
+      const card = input.closest(".editor-card");
+      updatePrinterEditorMode(card);
+      $("[data-field='summary-mode']", card).textContent = input.checked ? t("printer.managedOffline") : t("printer.connected");
+    });
   });
   $$("[data-action='add-extruder']", elements.printerEditor).forEach((button) => {
     button.addEventListener("click", () => {
@@ -579,13 +756,16 @@ function bindEditorEvents() {
     button.addEventListener("click", () => {
       const printers = readEditorModel();
       printers.splice(Number(button.closest(".editor-card").dataset.printerIndex), 1);
+      state.selectedSettingsPrinterId = null;
       renderPrinterEditor(printers);
     });
   });
 
   $$("[data-action='remove-toolhead']", elements.printerEditor).forEach((button) => {
     button.addEventListener("click", () => {
+      const card = button.closest(".editor-card");
       button.closest(".extruder-line").remove();
+      $("[data-field='summary-toolheads']", card).textContent = t("printer.toolheadCount", { count: $$(".extruder-line", card).length });
     });
   });
 }
@@ -612,6 +792,12 @@ elements.spoolSearch.addEventListener("input", (event) => {
   state.query = event.target.value;
   renderSpools();
 });
+elements.spoolGroupingInput.addEventListener("change", (event) => {
+  if (!state.config) return;
+  state.config.spoolGrouping = event.target.value === "vendor" ? "vendor" : "material";
+  window.localStorage.setItem("spoolhub-spool-grouping", state.config.spoolGrouping);
+  renderSpools();
+});
 
 elements.addPrinterButton.addEventListener("click", () => {
   const printers = readEditorModel();
@@ -622,13 +808,22 @@ elements.addPrinterButton.addEventListener("click", () => {
     moonrakerUrl: "http://localhost:7125",
     mainsailUrl: "http://localhost",
     connectionMode: "connected",
+    iconType: "corexy",
+    isNewPrinter: true,
     toolheads: [{
       id: `${printerId}-t0`,
       name: "T0",
       klipperObject: "extruder"
     }]
   });
+  state.selectedSettingsPrinterId = printerId;
   renderPrinterEditor(printers);
+  window.requestAnimationFrame(() => {
+    const activeCard = $(".editor-card.expanded", elements.printerEditor);
+    if (!activeCard) return;
+    activeCard.scrollIntoView({ block: "start", behavior: "smooth" });
+    $("[data-field='id']", activeCard)?.focus({ preventScroll: true });
+  });
 });
 
 elements.saveSettingsButton.addEventListener("click", async (event) => {
@@ -636,6 +831,8 @@ elements.saveSettingsButton.addEventListener("click", async (event) => {
   const config = {
     spoolmanUrl: elements.spoolmanUrlInput.value.trim().replace(/\/+$/, ""),
     syncSpoolLocation: elements.syncLocationInput.checked,
+    spoolIconStyle: elements.spoolIconStyleInput.value,
+    spoolGrouping: state.config?.spoolGrouping || "material",
     language: normalizeLanguage(elements.languageInput.value),
     printers: readEditorModel()
   };

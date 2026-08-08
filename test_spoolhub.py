@@ -95,6 +95,7 @@ class ManagedOfflinePrinterTests(unittest.TestCase):
                     "id": "bambu-x1c",
                     "name": "Bambu Lab X1C",
                     "connectionMode": "managed",
+                    "iconType": "enclosed",
                     "moonrakerUrl": "",
                     "mainsailUrl": "",
                     "toolheads": [
@@ -119,11 +120,14 @@ class ManagedOfflinePrinterTests(unittest.TestCase):
 
     def test_config_preserves_managed_mode_and_empty_urls(self):
         with closing(spoolhub.connect()) as conn, conn:
-            printer = spoolhub.get_config(conn)["printers"][0]
+            config = spoolhub.get_config(conn)
+            printer = config["printers"][0]
 
         self.assertEqual(printer["connectionMode"], "managed")
         self.assertEqual(printer["moonrakerUrl"], "")
         self.assertEqual(printer["mainsailUrl"], "")
+        self.assertEqual(printer["iconType"], "enclosed")
+        self.assertEqual(config["spoolIconStyle"], "contour")
 
     @patch("spoolhub.sync_active_spool_after_assignment")
     @patch("spoolhub.push_local_spool_state")

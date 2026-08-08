@@ -166,10 +166,19 @@ select {
   justify-content: flex-end;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 420px;
+  flex-wrap: wrap;
 }
 
 .spool-heading-actions input {
-  width: min(320px, 42vw);
+  width: auto;
+  min-width: 180px;
+  flex: 1 1 240px;
+}
+
+.spools-panel .panel-heading {
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .status-chip {
@@ -196,6 +205,221 @@ select {
   display: grid;
   gap: 12px;
   padding: 14px;
+}
+
+.printers-panel {
+  grid-column: 1 / -1;
+}
+
+.printer-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.printer-tile {
+  min-width: 0;
+  min-height: 138px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border-radius: 8px;
+  background: #15171b;
+}
+
+.printer-tile.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(73, 182, 168, 0.18);
+}
+
+.printer-icon {
+  width: 78px;
+  height: 100px;
+  color: var(--muted);
+}
+
+.printer-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.printer-icon .printer-icon-fill {
+  fill: currentColor;
+  fill-opacity: 0.14;
+}
+
+.printer-icon .printer-icon-solid {
+  fill: currentColor;
+  stroke: none;
+}
+
+.printer-tile-copy {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.printer-tile-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.printer-tile-title strong,
+.printer-tile-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printer-tile-meta,
+.printer-tile-copy > span:last-child {
+  color: var(--muted);
+}
+
+.printer-mode {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.selected-printer-details {
+  padding: 2px 0;
+}
+
+.selected-printer-panel,
+.spools-panel {
+  min-width: 0;
+}
+
+.grouping-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.grouping-control span {
+  font-size: 0.78rem;
+}
+
+.grouping-control select {
+  width: auto;
+  min-height: 36px;
+  max-width: 100%;
+}
+
+.spool-list {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.spool-group {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #15171b;
+}
+
+.spool-group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #202b2a;
+  border-bottom: 1px solid var(--line);
+}
+
+.spool-group-heading span {
+  color: var(--muted);
+}
+
+.spool-group-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+}
+
+.spool-group-grid .spool-card {
+  border: 0;
+  border-radius: 0;
+}
+
+.spool-icon {
+  position: relative;
+  width: 76px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  color: var(--spool-color);
+}
+
+.spool-icon.compact {
+  width: 48px;
+  height: 42px;
+}
+
+.assigned-spool .spool-icon {
+  color: var(--spool-color);
+}
+
+.assigned-spool .spool-icon > span {
+  color: var(--text);
+}
+
+.spool-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spool-icon .spool-icon-tint {
+  fill: currentColor;
+  fill-opacity: 0.2;
+}
+
+.spool-icon .spool-icon-soft {
+  fill: currentColor;
+  fill-opacity: 0.08;
+  stroke: none;
+}
+
+.spool-icon .spool-icon-solid {
+  fill: currentColor;
+  stroke: none;
+}
+
+.spool-icon .spool-icon-hole {
+  fill: #15171b;
+  stroke: none;
+}
+
+.spool-icon > span {
+  position: absolute;
+  left: 7px;
+  width: 36px;
+  color: var(--text);
+  font-size: 0.68rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.spool-icon.compact > span {
+  left: 2px;
+  width: 26px;
+  font-size: 0.52rem;
 }
 
 .printer-card,
@@ -482,6 +706,8 @@ dialog::backdrop {
   padding: 16px;
   display: grid;
   gap: 14px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
 }
 
 .dialog-heading,
@@ -521,16 +747,81 @@ label span {
 
 .printer-editor {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  max-height: 48vh;
-  overflow: auto;
+  overflow: visible;
   padding-right: 4px;
 }
 
 .editor-card {
+  padding: 0;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-card.expanded {
+  grid-column: 1 / -1;
+}
+
+.editor-summary {
+  width: 100%;
+  min-height: 126px;
   padding: 12px;
   display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: #15171b;
+}
+
+.editor-summary:hover,
+.editor-card.expanded .editor-summary {
+  background: #202329;
+}
+
+.editor-card.expanded .editor-summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.editor-summary [data-field="summary-icon"] {
+  display: grid;
+  place-items: center;
+}
+
+.editor-summary .printer-icon {
+  width: 64px;
+  height: 88px;
+}
+
+.editor-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.editor-summary-copy strong,
+.editor-summary-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-summary-copy span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.editor-body {
+  display: none;
   gap: 12px;
+  padding: 12px;
+}
+
+.editor-card.expanded .editor-body {
+  display: grid;
 }
 
 .editor-grid,
@@ -566,6 +857,10 @@ label span {
     grid-template-columns: 1fr;
   }
 
+  .printer-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .extruder-row {
     grid-template-columns: 1fr;
   }
@@ -580,6 +875,10 @@ label span {
     grid-template-columns: 1fr;
   }
 
+  .printer-editor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .topbar {
     align-items: flex-start;
   }
@@ -589,6 +888,36 @@ label span {
     flex-wrap: wrap;
   }
 
+  .spool-heading-actions input {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .printer-list {
+    grid-template-columns: 1fr;
+  }
+
+  .printer-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .printer-tile {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .spool-heading-actions {
+    align-items: stretch;
+    flex-basis: 100%;
+  }
+
+  .grouping-control {
+    width: 100%;
+    justify-content: space-between;
+    white-space: normal;
+  }
+
+  .grouping-control select,
   .spool-heading-actions input {
     width: 100%;
   }

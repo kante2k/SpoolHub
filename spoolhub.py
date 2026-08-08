@@ -58,6 +58,7 @@ def init_db() -> None:
               moonraker_url TEXT NOT NULL,
               mainsail_url TEXT NOT NULL DEFAULT '',
               connection_mode TEXT NOT NULL DEFAULT 'connected',
+              icon_type TEXT NOT NULL DEFAULT 'corexy',
               enabled INTEGER NOT NULL DEFAULT 1,
               sort_order INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
@@ -115,6 +116,8 @@ def init_db() -> None:
         set_default(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL)
         set_default(conn, "sync_spool_location", "false")
         set_default(conn, "language", "en")
+        set_default(conn, "spool_icon_style", "contour")
+        set_default(conn, "spool_grouping", "material")
         if conn.execute("SELECT COUNT(*) FROM printers").fetchone()[0] == 0:
             seed_printers(conn)
 
@@ -143,6 +146,9 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE printers ADD COLUMN mainsail_url TEXT NOT NULL DEFAULT ''")
     if "connection_mode" not in printer_columns:
         conn.execute("ALTER TABLE printers ADD COLUMN connection_mode TEXT NOT NULL DEFAULT 'connected'")
+    if "icon_type" not in printer_columns:
+        conn.execute("ALTER TABLE printers ADD COLUMN icon_type TEXT NOT NULL DEFAULT 'corexy'")
+        conn.execute("UPDATE printers SET icon_type = 'enclosed' WHERE connection_mode = 'managed'")
     assignment_columns = {row["name"] for row in conn.execute("PRAGMA table_info(assignments)").fetchall()}
     if "sync_pending" not in assignment_columns:
         conn.execute("ALTER TABLE assignments ADD COLUMN sync_pending INTEGER NOT NULL DEFAULT 0")
@@ -273,19 +279,21 @@ def add_printer(conn: sqlite3.Connection, printer: dict, sort_order: int = 0) ->
     ts = now_iso()
     printer_id = printer.get("id") or slug(printer.get("name", "printer"))
     connection_mode = "managed" if printer.get("connectionMode") == "managed" else "connected"
+    icon_type = printer.get("iconType") if printer.get("iconType") in {"enclosed", "corexy", "bedslinger"} else ("enclosed" if connection_mode == "managed" else "corexy")
     moonraker_url = clean_url(printer.get("moonrakerUrl", ""))
     mainsail_url = clean_url(printer.get("mainsailUrl", ""))
     if connection_mode == "connected" and not moonraker_url:
         raise ValueError("Moonraker URL is required for connected printers.")
     conn.execute(
         """
-        INSERT INTO printers (id, name, moonraker_url, mainsail_url, connection_mode, enabled, sort_order, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+        INSERT INTO printers (id, name, moonraker_url, mainsail_url, connection_mode, icon_type, enabled, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           moonraker_url = excluded.moonraker_url,
           mainsail_url = excluded.mainsail_url,
           connection_mode = excluded.connection_mode,
+          icon_type = excluded.icon_type,
           sort_order = excluded.sort_order,
           updated_at = excluded.updated_at
         """,
@@ -295,6 +303,7 @@ def add_printer(conn: sqlite3.Connection, printer: dict, sort_order: int = 0) ->
             moonraker_url,
             mainsail_url or (derive_mainsail_url(moonraker_url) if connection_mode == "connected" else ""),
             connection_mode,
+            icon_type,
             sort_order,
             ts,
             ts,
@@ -458,6 +467,7 @@ def get_config(conn: sqlite3.Connection) -> dict:
                 "moonrakerUrl": printer["moonraker_url"],
                 "mainsailUrl": printer["mainsail_url"] or (derive_mainsail_url(printer["moonraker_url"]) if printer["connection_mode"] == "connected" else ""),
                 "connectionMode": printer["connection_mode"],
+                "iconType": printer["icon_type"],
                 "enabled": bool(printer["enabled"]),
                 "toolheads": toolheads,
                 "extruders": [
@@ -474,6 +484,8 @@ def get_config(conn: sqlite3.Connection) -> dict:
         "spoolmanUrl": setting(conn, "spoolman_url", DEFAULT_SPOOLMAN_URL),
         "syncSpoolLocation": bool_setting(conn, "sync_spool_location"),
         "language": setting(conn, "language", "en"),
+        "spoolIconStyle": setting(conn, "spool_icon_style", "contour"),
+        "spoolGrouping": setting(conn, "spool_grouping", "material"),
         "printers": printers,
     }
 
@@ -888,6 +900,20 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute(
                         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                         ("language", str(body.get("language") or setting(conn, "language", "en")).strip().lower()),
+                    )
+                    spool_icon_style = body.get("spoolIconStyle")
+                    if spool_icon_style not in {"contour", "solid", "technical"}:
+                        spool_icon_style = "contour"
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        ("spool_icon_style", spool_icon_style),
+                    )
+                    spool_grouping = body.get("spoolGrouping")
+                    if spool_grouping not in {"material", "vendor"}:
+                        spool_grouping = "material"
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                        ("spool_grouping", spool_grouping),
                     )
                     active_printer_ids = []
                     for index, printer in enumerate(body.get("printers", [])):
